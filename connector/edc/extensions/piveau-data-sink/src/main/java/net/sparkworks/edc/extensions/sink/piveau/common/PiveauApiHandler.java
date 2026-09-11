@@ -137,6 +137,9 @@ public class PiveauApiHandler {
         if (datasetId == null || datasetId.isEmpty()) {
             throw new IOException("Dataset ID is required in JSON metadata");
         }
+        // The directory-derived id is the fallback for dct:identifier (and title) when
+        // the JSON omits them — see DatasetMetadata.getIdentifier().
+        metadata.setDatasetId(datasetId);
         
         // Get current date as fallback for issued; modified defaults to issued date on first creation
         String currentDate = LocalDate.now().format(DateTimeFormatter.ISO_DATE);
@@ -234,6 +237,16 @@ public class PiveauApiHandler {
             turtle.append("    adms:version              \"").append(escapeString(metadata.getVersion())).append("\" ;\n");
         }
 
+        // ── Coverage (Recommended) ─────────────────────────────────────────────
+        if (hasText(metadata.getSpatial())) {
+            turtle.append("    dct:spatial               \"").append(escapeString(metadata.getSpatial())).append("\" ;\n");
+        }
+        if (hasText(metadata.getTemporalStart()) && hasText(metadata.getTemporalEnd())) {
+            turtle.append("    dct:temporal              [ a dct:PeriodOfTime ; dcat:startDate \"")
+                  .append(metadata.getTemporalStart()).append("\"^^xsd:date ; dcat:endDate \"")
+                  .append(metadata.getTemporalEnd()).append("\"^^xsd:date ] ;\n");
+        }
+
         // ── Rights & License (Mandatory) ───────────────────────────────────────
         turtle.append("    dct:accessRights          <http://publications.europa.eu/resource/authority/access-right/")
               .append(metadata.getAccessRights()).append("> ;\n");
@@ -242,11 +255,17 @@ public class PiveauApiHandler {
 
         // ── SNS-JU / DALI (Mandatory) ──────────────────────────────────────────
         turtle.append("    dali:snsProjectName       \"").append(escapeString(metadata.getSnsProjectName())).append("\" ;\n");
+        turtle.append("    dali:gdprCompliant        ").append(metadata.isGdprCompliant()).append(" ;\n");
+        turtle.append("    dali:fairCompliant        ").append(metadata.isFairCompliant()).append(" ;\n");
 
         // ── GAIA-X (Mandatory) ─────────────────────────────────────────────────
+        turtle.append("    gax:containsPII           ").append(metadata.isContainsPii()).append(" ;\n");
         if (hasText(metadata.getProducedBy())) {
             turtle.append("    gax:producedBy            <").append(metadata.getProducedBy()).append("> ;\n");
             turtle.append("    prov:wasAttributedTo      <").append(metadata.getProducedBy()).append("> ;\n");
+        }
+        if (hasText(metadata.getExposedThrough())) {
+            turtle.append("    gax:exposedThrough        <").append(metadata.getExposedThrough()).append("> ;\n");
         }
 
         // ── Classification (Recommended) ───────────────────────────────────────
@@ -265,14 +284,37 @@ public class PiveauApiHandler {
         }
 
         if (hasText(metadata.getCreatorName())) {
-            turtle.append("    dct:creator               [ a foaf:Person ; foaf:name \"")
-                  .append(escapeString(metadata.getCreatorName()));
+            // foaf:Person for named researchers, foaf:Organization when the institution
+            // itself is credited — the MAP uses both. ORCID goes in schema:identifier as
+            // an IRI, so a bare "0000-0002-..." is expanded to its orcid.org form.
+            String nodeType = "Organization".equalsIgnoreCase(metadata.getCreatorKind()) ? "foaf:Organization" : "foaf:Person";
+            turtle.append("    dct:creator               [ a ").append(nodeType)
+                  .append(" ; foaf:name \"").append(escapeString(metadata.getCreatorName())).append("\"");
             if (hasText(metadata.getCreatorEmail())) {
-                turtle.append("\" ; foaf:mbox <mailto:").append(metadata.getCreatorEmail()).append(">");
-            } else {
-                turtle.append("\"");
+                turtle.append(" ; foaf:mbox <mailto:").append(metadata.getCreatorEmail()).append(">");
+            }
+            if (hasText(metadata.getCreatorOrcid())) {
+                String orcid = metadata.getCreatorOrcid().trim();
+                if (!orcid.startsWith("http")) {
+                    orcid = "https://orcid.org/" + orcid;
+                }
+                turtle.append(" ; schema:identifier <").append(orcid).append(">");
+            }
+            if (hasText(metadata.getCreatorAffiliation())) {
+                turtle.append(" ; schema:affiliation \"").append(escapeString(metadata.getCreatorAffiliation())).append("\"");
             }
             turtle.append(" ] ;\n");
+        }
+
+        for (String contributor : metadata.getContributors()) {
+            if (!hasText(contributor)) continue;
+            turtle.append("    dct:contributor           [ a foaf:Agent ; foaf:name \"")
+                  .append(escapeString(contributor)).append("\" ] ;\n");
+        }
+
+        for (String publication : metadata.getRelatedPublications()) {
+            if (!hasText(publication)) continue;
+            turtle.append("    dct:relation              <").append(publication.trim()).append("> ;\n");
         }
 
         if (hasText(metadata.getContactEmail())) {
@@ -298,7 +340,7 @@ public class PiveauApiHandler {
             appendTcStringProp(turtle, "dali:ranSplit",                 tc.getRanSplit(), false);
             appendTcStringProp(turtle, "dali:ranFocusedTechnology",     tc.getRanFocusedTechnology(), false);
             appendTcStringProp(turtle, "dali:ranCoverageType",          tc.getRanCoverageType(), false);
-            appendTcStringProp(turtle, "dali:ranFrequencyBand",         tc.getRanFrequencyBand(), false);
+            appendTcListProp(turtle,   "dali:ranFrequencyBand",         tc.getRanFrequencyBand());
             if (tc.getRanBandwidthMHz() != null) {
                 turtle.append("        dali:ranBandwidthMHz      ").append(tc.getRanBandwidthMHz()).append(" ;\n");
             }
@@ -356,15 +398,17 @@ public class PiveauApiHandler {
         sb.append(" ;\n");
     }
 
-    /** Append a multi-value predicate (comma-separated string literals) to a testbed context blank node. */
+    /**
+     * Append a repeatable predicate to a testbed context blank node, one triple per value.
+     * Blank entries are skipped so an unfilled list row is not published as an empty literal.
+     */
     private void appendTcListProp(StringBuilder sb, String predicate, List<String> values) {
-        if (values == null || values.isEmpty()) return;
-        sb.append("        ").append(predicate).append("  ");
-        for (int i = 0; i < values.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append("\"").append(escapeString(values.get(i))).append("\"");
+        if (values == null) return;
+        for (String value : values) {
+            if (value == null || value.isBlank()) continue;
+            sb.append("        ").append(predicate).append("  \"")
+              .append(escapeString(value.trim())).append("\" ;\n");
         }
-        sb.append(" ;\n");
     }
     
     /**

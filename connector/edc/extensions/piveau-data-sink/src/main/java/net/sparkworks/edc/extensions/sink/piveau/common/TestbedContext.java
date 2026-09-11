@@ -15,6 +15,7 @@
 package net.sparkworks.edc.extensions.sink.piveau.common;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
@@ -72,9 +73,14 @@ public class TestbedContext {
     private String ranCoverageType;
 
     /** NR frequency band (e.g. "n78"). Maps to {@code dali:ranFrequencyBand}. */
+    /**
+     * Repeatable — a testbed can operate on several bands at once; {@code dali:ranFrequencyBand}
+     * has no maxCount. A single string is accepted too.
+     */
     @JsonProperty("ran_frequency_band")
     @JsonAlias("ranFrequencyBand")
-    private String ranFrequencyBand;
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private List<String> ranFrequencyBand;
 
     /** Channel bandwidth in MHz. Maps to {@code dali:ranBandwidthMHz}. */
     @JsonProperty("ran_bandwidth_mhz")

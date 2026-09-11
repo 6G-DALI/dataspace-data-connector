@@ -56,6 +56,19 @@ public class DatasetMetadata {
 
     private String modified;
 
+    /** Geographic coverage, free text. Maps to {@code dct:spatial}. */
+    private String spatial;
+
+    /** Start of the covered period ({@code YYYY-MM-DD}). Maps to {@code dct:temporal dcat:startDate}. */
+    @JsonProperty("temporal_start")
+    @JsonAlias("temporalStart")
+    private String temporalStart;
+
+    /** End of the covered period ({@code YYYY-MM-DD}). Maps to {@code dct:temporal dcat:endDate}. */
+    @JsonProperty("temporal_end")
+    @JsonAlias("temporalEnd")
+    private String temporalEnd;
+
     // ── Classification ────────────────────────────────────────────────────────
 
     /** EU Data Theme code (default: TECH). Maps to {@code dcat:theme}. */
@@ -83,6 +96,31 @@ public class DatasetMetadata {
     @JsonAlias("accessRights")
     private String accessRights = "PUBLIC";
 
+    // ── Compliance (MAP §5.2 / CMT Group 2) ──────────────────────────────────
+
+    /** Owner's GDPR compliance statement. Maps to {@code dali:gdprCompliant}. */
+    @JsonProperty("gdpr_compliant")
+    @JsonAlias("gdprCompliant")
+    private boolean gdprCompliant = true;
+
+    /** Owner's FAIR compliance statement. Maps to {@code dali:fairCompliant}. */
+    @JsonProperty("fair_compliant")
+    @JsonAlias("fairCompliant")
+    private boolean fairCompliant = true;
+
+    /** Whether the data contains personally identifiable information. Maps to {@code gax:containsPII}. */
+    @JsonProperty("contains_pii")
+    @JsonAlias("containsPii")
+    private boolean containsPii = false;
+
+    /**
+     * URI of the {@code gax:DataExchangeComponent} (data space endpoint) the dataset is
+     * accessible through. Maps to {@code gax:exposedThrough}; omitted when unset.
+     */
+    @JsonProperty("exposed_through")
+    @JsonAlias("exposedThrough")
+    private String exposedThrough;
+
     // ── Agents ───────────────────────────────────────────────────────────────
 
     /** Publishing organisation name. Maps to {@code dct:publisher foaf:name}. */
@@ -97,6 +135,34 @@ public class DatasetMetadata {
     @JsonProperty("creator_email")
     @JsonAlias("creatorEmail")
     private String creatorEmail;
+
+    /** Creator's ORCID (bare id or URL). Maps to {@code dct:creator schema:identifier}. */
+    @JsonProperty("creator_orcid")
+    @JsonAlias("creatorOrcid")
+    private String creatorOrcid;
+
+    /** Creator's affiliation. Maps to {@code dct:creator schema:affiliation}. */
+    @JsonProperty("creator_affiliation")
+    @JsonAlias("creatorAffiliation")
+    private String creatorAffiliation;
+
+    /**
+     * Whether the creator is an institution rather than a person: {@code Person} (default)
+     * or {@code Organization}. Selects the {@code rdf:type} of the {@code dct:creator} node.
+     */
+    @JsonProperty("creator_kind")
+    @JsonAlias("creatorKind")
+    private String creatorKind = "Person";
+
+    /** Names of further contributors. Each maps to a {@code dct:contributor foaf:Agent}. */
+    @Setter(AccessLevel.NONE)
+    private List<String> contributors = new ArrayList<>();
+
+    /** URIs (DOI, arXiv, ...) of related publications. Each maps to {@code dct:relation}. */
+    @JsonProperty("related_publications")
+    @JsonAlias("relatedPublications")
+    @Setter(AccessLevel.NONE)
+    private List<String> relatedPublications = new ArrayList<>();
 
     /** Contact e-mail for the dataset. Maps to {@code dcat:contactPoint vcard:hasEmail}. */
     @JsonProperty("contact_email")
@@ -173,5 +239,13 @@ public class DatasetMetadata {
 
     public void setKeywords(List<String> keywords) {
         this.keywords = keywords != null ? keywords : new ArrayList<>();
+    }
+
+    public void setContributors(List<String> contributors) {
+        this.contributors = contributors != null ? contributors : new ArrayList<>();
+    }
+
+    public void setRelatedPublications(List<String> relatedPublications) {
+        this.relatedPublications = relatedPublications != null ? relatedPublications : new ArrayList<>();
     }
 }
