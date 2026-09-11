@@ -64,6 +64,7 @@ public class CatalogUiController {
     private final ContractNegotiationService contractNegotiationService;
     private final TransferProcessService transferProcessService;
     private final Monitor monitor;
+    private final boolean submitEnabled;
 
     public CatalogUiController(AssetIndex assetIndex,
                                ContractDefinitionStore contractDefinitionStore,
@@ -71,7 +72,8 @@ public class CatalogUiController {
                                ContractAgreementService contractAgreementService,
                                ContractNegotiationService contractNegotiationService,
                                TransferProcessService transferProcessService,
-                               Monitor monitor) {
+                               Monitor monitor,
+                               boolean submitEnabled) {
         this.assetIndex = assetIndex;
         this.contractDefinitionStore = contractDefinitionStore;
         this.policyDefinitionStore = policyDefinitionStore;
@@ -79,6 +81,7 @@ public class CatalogUiController {
         this.contractNegotiationService = contractNegotiationService;
         this.transferProcessService = transferProcessService;
         this.monitor = monitor;
+        this.submitEnabled = submitEnabled;
     }
 
     @GET
@@ -92,7 +95,14 @@ public class CatalogUiController {
     @Path("catalog/submit")
     @Produces(MediaType.TEXT_HTML)
     public Response submitPage() {
+        if (!submitEnabled) {
+            return submitDisabled();
+        }
         return servePage("web/submit-dataset.html");
+    }
+
+    private Response submitDisabled() {
+        return Response.status(404).entity("Dataset submission is disabled on this connector").build();
     }
 
     private Response servePage(String resource) {
@@ -101,6 +111,11 @@ public class CatalogUiController {
                 return Response.status(404).entity(resource + " not found").build();
             }
             String html = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            if (!submitEnabled) {
+                // Strip everything between the markers so the nav link to the
+                // (disabled) submit page is not rendered.
+                html = html.replaceAll("(?s)<!--SUBMIT_LINK-->.*?<!--/SUBMIT_LINK-->", "");
+            }
             return Response.ok(html).build();
         } catch (Exception e) {
             monitor.severe("Failed to serve " + resource, e);
@@ -312,6 +327,9 @@ public class CatalogUiController {
                                @jakarta.ws.rs.QueryParam("accessKey") String accessKey,
                                @jakarta.ws.rs.QueryParam("secretKey") String secretKey,
                                InputStream body) {
+        if (!submitEnabled) {
+            return submitDisabled();
+        }
         try {
             if (bucket == null || key == null) {
                 return Response.status(400).entity("{\"error\":\"bucket and key are required\"}").build();
@@ -393,6 +411,9 @@ public class CatalogUiController {
     @Path("catalog/api/trigger-validation")
     @Produces(MediaType.APPLICATION_JSON)
     public Response triggerValidation(@jakarta.ws.rs.QueryParam("assetId") String assetId) {
+        if (!submitEnabled) {
+            return submitDisabled();
+        }
         try {
             if (assetId == null || assetId.isBlank()) {
                 return Response.status(400).entity("{\"error\":\"assetId is required\"}").build();
