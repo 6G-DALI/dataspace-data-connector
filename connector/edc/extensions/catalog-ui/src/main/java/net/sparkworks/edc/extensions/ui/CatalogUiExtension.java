@@ -47,6 +47,7 @@ public class CatalogUiExtension implements ServiceExtension {
     public void initialize(ServiceExtensionContext context) {
         var monitor = context.getMonitor();
         boolean submitEnabled = context.getSetting(SUBMIT_ENABLED, false);
+        String participantId = context.getSetting("edc.participant.id", "unknown");
 
         var controller = new CatalogUiController(
                 assetIndex,
@@ -56,7 +57,8 @@ public class CatalogUiExtension implements ServiceExtension {
                 contractNegotiationService,
                 transferProcessService,
                 monitor,
-                submitEnabled
+                submitEnabled,
+                participantId
         );
         webService.registerResource(controller);
 

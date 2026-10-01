@@ -65,6 +65,7 @@ public class CatalogUiController {
     private final TransferProcessService transferProcessService;
     private final Monitor monitor;
     private final boolean submitEnabled;
+    private final String participantId;
 
     public CatalogUiController(AssetIndex assetIndex,
                                ContractDefinitionStore contractDefinitionStore,
@@ -73,7 +74,8 @@ public class CatalogUiController {
                                ContractNegotiationService contractNegotiationService,
                                TransferProcessService transferProcessService,
                                Monitor monitor,
-                               boolean submitEnabled) {
+                               boolean submitEnabled,
+                               String participantId) {
         this.assetIndex = assetIndex;
         this.contractDefinitionStore = contractDefinitionStore;
         this.policyDefinitionStore = policyDefinitionStore;
@@ -82,6 +84,7 @@ public class CatalogUiController {
         this.transferProcessService = transferProcessService;
         this.monitor = monitor;
         this.submitEnabled = submitEnabled;
+        this.participantId = participantId;
     }
 
     @GET
@@ -120,6 +123,19 @@ public class CatalogUiController {
         } catch (Exception e) {
             monitor.severe("Failed to serve " + resource, e);
             return Response.serverError().entity("Error loading page").build();
+        }
+    }
+
+    @GET
+    @Path("catalog/api/info")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response connectorInfo() {
+        ObjectNode node = MAPPER.createObjectNode();
+        node.put("participantId", participantId);
+        try {
+            return Response.ok(MAPPER.writeValueAsString(node)).build();
+        } catch (Exception e) {
+            return jsonError(e);
         }
     }
 

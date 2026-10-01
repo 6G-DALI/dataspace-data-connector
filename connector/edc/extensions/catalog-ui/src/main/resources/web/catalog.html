@@ -4,93 +4,123 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Data Space Catalogue</title>
+    <!-- Same stack and order as every other 6G-DALI front end's main.tsx
+         (see common-ui/README.md "Installing in an app"): Bootstrap, then
+         AdminLTE CSS/JS, then ui-theme's fonts, then the full ui-theme
+         bundle (tokens+animations+theme+ui+base) - it overrides Bootstrap/
+         AdminLTE, so it must load after them. Versions pinned to match
+         dataops-ui's package.json (admin-lte ^4.0.2, bootstrap ^5.3.8) and
+         ui-theme's own published version. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@4.0.2/dist/css/adminlte.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.2/dist/js/adminlte.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@6g-dali/ui-theme@0.3.1/fonts.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@6g-dali/ui-theme@0.3.1/index.css">
+    <!-- shell.css: not part of the documented bundle above (the React
+         ThemeToggle component imports it itself) - included explicitly here
+         for its .dali-theme-toggle* classes, since this page has no React
+         component to pull it in for us. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@6g-dali/ui-theme@0.3.1/shell.css">
+    <!-- Applies the stored/OS-preferred theme before first paint (see
+         theme.js's own doc comment on why this matters), and wires the
+         toggle below to it. Dark is the default if nothing is stored/
+         preferred, so this only has a visible effect for light-theme users. -->
+    <script type="module">
+        import { initTheme, toggleTheme } from 'https://cdn.jsdelivr.net/npm/@6g-dali/ui-theme@0.3.1/theme.js';
+        const theme = initTheme();
+        window.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('theme-toggle-input');
+            input.checked = theme === 'dark';
+            input.addEventListener('change', () => toggleTheme());
+        });
+    </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; }
-        header { background: #1a237e; color: #fff; padding: 1.5rem 2rem; }
-        header h1 { font-size: 1.4rem; font-weight: 600; }
-        header p { font-size: 0.85rem; opacity: 0.8; margin-top: 0.3rem; }
+        body { font-family: var(--font-body); background: var(--bg-base); color: var(--text-primary); }
+        header { background: var(--bg-surface); color: var(--text-primary); padding: 1.5rem 2rem; border-bottom: 1px solid var(--border); }
+        header h1 { font-size: 1.4rem; font-weight: 600; font-family: var(--font-display); }
+        header p { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.3rem; }
         header .header-row { display: flex; justify-content: space-between; align-items: center; }
-        .btn-submit { display: inline-block; padding: 0.45rem 1.2rem; background: #29b6f6; color: #0a1628; border-radius: 5px; font-size: 0.85rem; font-weight: 600; text-decoration: none; transition: background 0.15s; }
-        .btn-submit:hover { background: #4fc3f7; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+        .btn-submit { display: inline-block; padding: 0.45rem 1.2rem; background: var(--accent-cyan); color: var(--text-inverse); border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; text-decoration: none; transition: background var(--duration-normal) var(--ease-standard); }
+        .btn-submit:hover { background: var(--accent-cyan-bright); }
+        .container { max-width: var(--content-max-width); margin: 0 auto; padding: 1.5rem; }
         .stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-        .stat-card { background: #fff; border-radius: 8px; padding: 1rem 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); flex: 1; min-width: 120px; cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; border: 2px solid transparent; }
-        .stat-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
-        .stat-card.active { border-color: #1a237e; box-shadow: 0 2px 8px rgba(26,35,126,0.25); }
-        .stat-card .label { font-size: 0.75rem; text-transform: uppercase; color: #888; }
-        .stat-card .value { font-size: 1.8rem; font-weight: 700; color: #1a237e; }
+        .stat-card { background: var(--bg-surface); border-radius: var(--radius-md); padding: 1rem 1.5rem; box-shadow: var(--shadow-panel); flex: 1; min-width: 120px; cursor: pointer; transition: box-shadow var(--duration-normal), border-color var(--duration-normal); border: 2px solid transparent; }
+        .stat-card:hover { box-shadow: var(--shadow-panel), 0 0 0 1px var(--border-bright); }
+        .stat-card.active { border-color: var(--accent-cyan); box-shadow: var(--shadow-focus); }
+        .stat-card .label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); }
+        .stat-card .value { font-size: var(--size-metric); font-weight: 700; color: var(--accent-cyan); font-family: var(--font-display); }
         .search { margin-bottom: 1rem; }
-        .search input { width: 100%; padding: 0.7rem 1rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; }
-        table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        th { background: #f0f0f0; text-align: left; padding: 0.75rem 1rem; font-size: 0.8rem; text-transform: uppercase; color: #666; }
-        td { padding: 0.75rem 1rem; border-top: 1px solid #eee; font-size: 0.85rem; word-break: break-all; }
-        tr:hover td { background: #f9f9ff; }
-        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
-        .badge-minio { background: #e8f5e9; color: #2e7d32; }
-        .badge-http { background: #e3f2fd; color: #1565c0; }
-        .badge-other { background: #f3e5f5; color: #7b1fa2; }
-        .badge-state { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
-        .state-finalized, .state-completed { background: #e8f5e9; color: #2e7d32; }
-        .state-started, .state-requested, .state-initial { background: #fff3e0; color: #e65100; }
-        .state-terminated, .state-error { background: #ffebee; color: #c62828; }
-        .btn-download { padding: 0.35rem 0.8rem; border: 1px solid #1a237e; background: #fff; color: #1a237e; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: 0.4rem; }
-        .btn-download:hover { background: #1a237e; color: #fff; }
-        .btn-validate { padding: 0.35rem 0.8rem; border: 1px solid #2e7d32; background: #fff; color: #2e7d32; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
-        .btn-validate:hover { background: #2e7d32; color: #fff; }
-        .btn-preview { padding: 0.35rem 0.8rem; border: 1px solid #7b1fa2; background: #fff; color: #7b1fa2; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: 0.4rem; }
-        .btn-preview:hover { background: #7b1fa2; color: #fff; }
-        .preview-pre { white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.78rem; background: #f7f7fb; padding: 0.75rem; border-radius: 6px; max-height: 50vh; overflow: auto; }
+        .search input { width: 100%; padding: 0.7rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 0.9rem; background: var(--bg-surface); color: var(--text-primary); }
+        table { width: 100%; border-collapse: collapse; background: var(--bg-surface); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-panel); }
+        th { background: var(--bg-elevated); text-align: left; padding: 0.75rem 1rem; font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); }
+        td { padding: 0.75rem 1rem; border-top: 1px solid var(--border); font-size: 0.85rem; word-break: break-all; }
+        tr:hover td { background: rgba(var(--accent-cyan-rgb), 0.06); }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 600; }
+        .badge-minio { background: rgba(var(--accent-green-rgb), 0.15); color: var(--accent-green); }
+        .badge-http { background: rgba(var(--accent-cyan-rgb), 0.15); color: var(--accent-cyan); }
+        .badge-other { background: rgba(var(--accent-purple-rgb), 0.15); color: var(--accent-purple); }
+        .badge-state { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 600; }
+        .state-finalized, .state-completed { background: rgba(var(--accent-green-rgb), 0.15); color: var(--accent-green); }
+        .state-started, .state-requested, .state-initial { background: rgba(var(--accent-amber-rgb), 0.15); color: var(--accent-amber); }
+        .state-terminated, .state-error { background: rgba(var(--accent-red-rgb), 0.15); color: var(--accent-red); }
+        .btn-download { padding: 0.35rem 0.8rem; border: 1px solid var(--accent-cyan); background: transparent; color: var(--accent-cyan); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; margin-left: 0.4rem; }
+        .btn-download:hover { background: var(--accent-cyan); color: var(--text-inverse); }
+        .btn-validate { padding: 0.35rem 0.8rem; border: 1px solid var(--accent-green); background: transparent; color: var(--accent-green); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; }
+        .btn-validate:hover { background: var(--accent-green); color: var(--text-inverse); }
+        .btn-preview { padding: 0.35rem 0.8rem; border: 1px solid var(--accent-purple); background: transparent; color: var(--accent-purple); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; margin-left: 0.4rem; }
+        .btn-preview:hover { background: var(--accent-purple); color: var(--text-inverse); }
+        .preview-pre { white-space: pre-wrap; word-break: break-all; font-family: var(--font-mono); font-size: 0.78rem; background: var(--bg-elevated); color: var(--text-primary); padding: 0.75rem; border-radius: var(--radius-md); max-height: 50vh; overflow: auto; }
         .preview-table-wrap { max-height: 50vh; overflow: auto; }
-        .semantic-pre { white-space: pre-wrap; word-break: break-word; font-family: monospace; font-size: 0.78rem; background: #f7f7fb; color: #1a237e; padding: 0.75rem; border-radius: 6px; max-height: 40vh; overflow: auto; margin-bottom: 0.75rem; border: 1px solid #e0e4f0; }
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; align-items: center; justify-content: center; }
+        .semantic-pre { white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 0.78rem; background: var(--bg-elevated); color: var(--accent-cyan); padding: 0.75rem; border-radius: var(--radius-md); max-height: 40vh; overflow: auto; margin-bottom: 0.75rem; border: 1px solid var(--border); }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: var(--bg-overlay); z-index: 100; align-items: center; justify-content: center; }
         .modal-overlay.active { display: flex; }
-        .modal { background: #fff; border-radius: 8px; width: 90%; max-width: 640px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.25); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid #eee; position: sticky; top: 0; background: #fff; }
-        .modal-header h2 { font-size: 1rem; color: #1a237e; }
-        .modal-close { border: none; background: none; font-size: 1.3rem; line-height: 1; cursor: pointer; color: #888; }
-        .modal-close:hover { color: #333; }
+        .modal { background: var(--bg-surface); border-radius: var(--radius-md); width: 90%; max-width: 640px; max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-panel); border: 1px solid var(--border); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-surface); }
+        .modal-header h2 { font-size: 1rem; color: var(--accent-cyan); font-family: var(--font-display); }
+        .modal-close { border: none; background: none; font-size: 1.3rem; line-height: 1; cursor: pointer; color: var(--text-secondary); }
+        .modal-close:hover { color: var(--text-primary); }
         .modal-body { padding: 1.25rem; }
         .val-summary { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
-        .val-badge { padding: 0.25rem 0.7rem; border-radius: 4px; font-weight: 700; font-size: 0.85rem; }
-        .val-badge.pass { background: #e8f5e9; color: #2e7d32; }
-        .val-badge.fail { background: #ffebee; color: #c62828; }
-        .val-bar-track { flex: 1; height: 10px; background: #eee; border-radius: 5px; overflow: hidden; }
-        .val-bar-fill { height: 100%; background: #2e7d32; }
-        .val-bar-fill.fail { background: #c62828; }
-        .val-pct { font-size: 0.8rem; color: #666; white-space: nowrap; }
-        .val-meta { font-size: 0.75rem; color: #888; margin-bottom: 1rem; }
+        .val-badge { padding: 0.25rem 0.7rem; border-radius: var(--radius-sm); font-weight: 700; font-size: 0.85rem; }
+        .val-badge.pass { background: rgba(var(--accent-green-rgb), 0.15); color: var(--accent-green); }
+        .val-badge.fail { background: rgba(var(--accent-red-rgb), 0.15); color: var(--accent-red); }
+        .val-bar-track { flex: 1; height: 10px; background: var(--bg-elevated); border-radius: var(--radius-sm); overflow: hidden; }
+        .val-bar-fill { height: 100%; background: var(--accent-green); }
+        .val-bar-fill.fail { background: var(--accent-red); }
+        .val-pct { font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; }
+        .val-meta { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 1rem; }
         .val-table { width: 100%; border-collapse: collapse; }
-        .val-table th { text-align: left; padding: 0.4rem 0.5rem; font-size: 0.72rem; text-transform: uppercase; color: #888; border-bottom: 1px solid #eee; }
-        .val-table td { padding: 0.4rem 0.5rem; font-size: 0.82rem; border-bottom: 1px solid #f2f2f2; }
+        .val-table th { text-align: left; padding: 0.4rem 0.5rem; font-size: 0.72rem; text-transform: uppercase; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+        .val-table td { padding: 0.4rem 0.5rem; font-size: 0.82rem; border-bottom: 1px solid var(--border-subtle); }
         .val-check { font-weight: 700; }
-        .val-check.pass { color: #2e7d32; }
-        .val-check.fail { color: #c62828; }
-        .val-error { font-size: 0.75rem; color: #c62828; margin-top: 0.15rem; }
-        .loading { text-align: center; padding: 3rem; color: #888; }
-        .error { text-align: center; padding: 2rem; color: #c62828; background: #ffebee; border-radius: 8px; }
+        .val-check.pass { color: var(--accent-green); }
+        .val-check.fail { color: var(--accent-red); }
+        .val-error { font-size: 0.75rem; color: var(--accent-red); margin-top: 0.15rem; }
+        .loading { text-align: center; padding: 3rem; color: var(--text-secondary); }
+        .error { text-align: center; padding: 2rem; color: var(--accent-red); background: rgba(var(--accent-red-rgb), 0.12); border-radius: var(--radius-md); }
         .panel { display: none; }
         .panel.active { display: block; }
-        .mono { font-family: monospace; font-size: 0.8rem; }
-        .muted { color: #999; font-size: 0.75rem; }
-        .meta-row td { background: #fafbfc; padding: 0.5rem 1rem; }
-        .meta-row td:hover { background: #fafbfc; }
+        .mono { font-family: var(--font-mono); font-size: 0.8rem; }
+        .muted { color: var(--text-muted); font-size: 0.75rem; }
+        .meta-row td { background: var(--bg-elevated); padding: 0.5rem 1rem; }
+        .meta-row td:hover { background: var(--bg-elevated); }
         .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.3rem 1.5rem; }
         .meta-item { display: flex; gap: 0.4rem; font-size: 0.8rem; padding: 0.2rem 0; }
-        .meta-key { color: #1a237e; font-weight: 600; white-space: nowrap; }
-        .meta-val { color: #555; word-break: break-all; }
-        .meta-section { font-size: 0.7rem; text-transform: uppercase; color: #888; margin-top: 0.5rem; margin-bottom: 0.2rem; grid-column: 1 / -1; border-bottom: 1px solid #eee; padding-bottom: 0.2rem; }
+        .meta-key { color: var(--accent-cyan); font-weight: 600; white-space: nowrap; }
+        .meta-val { color: var(--text-secondary); word-break: break-all; }
+        .meta-section { font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); margin-top: 0.5rem; margin-bottom: 0.2rem; grid-column: 1 / -1; border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
         .asset-row { cursor: pointer; }
-        .asset-row:hover td { background: #f0f0ff; }
-        .asset-row.derived-row td:first-child { box-shadow: inset 3px 0 0 #4caf50; }
+        .asset-row:hover td { background: rgba(var(--accent-cyan-rgb), 0.08); }
+        .asset-row.derived-row td:first-child { box-shadow: inset 3px 0 0 var(--accent-green); }
         .asset-cell { display: flex; flex-direction: column; }
         .asset-cell .asset-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; }
-        .lineage-connector { color: #4caf50; font-weight: 700; margin-right: 0.35rem; }
+        .lineage-connector { color: var(--accent-green); font-weight: 700; margin-right: 0.35rem; }
         .asset-badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; margin-left: 0.5rem; }
-        .asset-badge.source { background: #e3f2fd; color: #1565c0; }
-        .asset-badge.derived-badge { background: #e8f5e9; color: #2e7d32; }
-        .asset-prov { font-size: 0.72rem; color: #888; margin-top: 0.15rem; }
-        .lineage-legend { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; font-size: 0.78rem; color: #666; }
+        .asset-badge.source { background: rgba(var(--accent-cyan-rgb), 0.15); color: var(--accent-cyan); }
+        .asset-badge.derived-badge { background: rgba(var(--accent-green-rgb), 0.15); color: var(--accent-green); }
+        .asset-prov { font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.15rem; }
+        .lineage-legend { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; font-size: 0.78rem; color: var(--text-secondary); }
         .lineage-legend > span { display: inline-flex; align-items: center; gap: 0.3rem; }
     </style>
 </head>
@@ -102,7 +132,18 @@
                 <p id="connector-info">Loading...</p>
             </div>
             <nav style="display:flex;gap:1.5rem;align-items:center">
-                <a href="/api/catalog" style="color:#29b6f6;text-decoration:none;font-size:0.85rem;font-weight:600">Catalogue</a>
+                <label class="dali-theme-toggle" title="Switch theme">
+                    <svg class="dali-theme-toggle-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <span class="dali-theme-toggle-track">
+                        <input type="checkbox" id="theme-toggle-input" class="dali-theme-toggle-input" aria-label="Switch theme">
+                        <span class="dali-theme-toggle-thumb"></span>
+                    </span>
+                </label>
+                <span id="participant-id" style="color:var(--text-secondary);font-size:0.78rem;font-weight:600"></span>
+                <a href="/api/catalog" style="color:var(--accent-cyan);text-decoration:none;font-size:0.85rem;font-weight:600">Catalogue</a>
                 <!--SUBMIT_LINK--><a href="/api/catalog/submit" class="btn-submit">+ Submit Dataset</a><!--/SUBMIT_LINK-->
             </nav>
         </div>
@@ -577,7 +618,8 @@
 
         async function load() {
             try {
-                const [assetsRes, contractsRes, policiesRes, agreementsRes, negotiationsRes, transfersRes] = await Promise.all([
+                const [infoRes, assetsRes, contractsRes, policiesRes, agreementsRes, negotiationsRes, transfersRes] = await Promise.all([
+                    fetch(BASE + '/api/info'),
                     fetch(BASE + '/api/assets'),
                     fetch(BASE + '/api/contracts'),
                     fetch(BASE + '/api/policies'),
@@ -586,6 +628,7 @@
                     fetch(BASE + '/api/transfers')
                 ]);
 
+                const info = await infoRes.json();
                 allAssets = await assetsRes.json();
                 const contracts = await contractsRes.json();
                 const policies = await policiesRes.json();
@@ -600,6 +643,7 @@
                 document.getElementById('negotiation-count').textContent = negotiations.length;
                 document.getElementById('transfer-count').textContent = transfers.length;
                 document.getElementById('connector-info').textContent = 'Connector at ' + window.location.host;
+                document.getElementById('participant-id').textContent = info.participantId;
 
                 renderAssets(allAssets);
 
