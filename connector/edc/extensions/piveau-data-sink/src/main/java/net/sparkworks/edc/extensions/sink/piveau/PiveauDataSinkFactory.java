@@ -20,7 +20,6 @@ import okhttp3.OkHttpClient;
 
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
-import net.sparkworks.edc.extensions.sink.piveau.common.PiveauApiHandler;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.DataSink;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.DataSinkFactory;
 import org.eclipse.edc.spi.monitor.Monitor;
@@ -32,6 +31,10 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Factory for creating PiveauDataSink instances.
+ *
+ * <p>The destination data address supplies the data-lake S3 endpoint, bucket and credentials.
+ * Catalogue (Piveau) properties are no longer read here: the s3-asset-monitor registers files
+ * with Piveau once they appear in the data lake.
  */
 public class PiveauDataSinkFactory implements DataSinkFactory {
 
@@ -40,17 +43,15 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
     private final ConnectionFactory rabbitConnectionFactory;
     private final String rabbitQueue;
     private final String experimentPrefix;
-    private final String daliConnectorUrl;
 
     public PiveauDataSinkFactory(Monitor monitor, ExecutorService executorService,
                                  ConnectionFactory rabbitConnectionFactory, String rabbitQueue,
-                                 String experimentPrefix, String daliConnectorUrl) {
+                                 String experimentPrefix) {
         this.monitor = monitor;
         this.executorService = executorService;
         this.rabbitConnectionFactory = rabbitConnectionFactory;
         this.rabbitQueue = rabbitQueue;
         this.experimentPrefix = experimentPrefix;
-        this.daliConnectorUrl = daliConnectorUrl;
     }
 
     @Override
@@ -88,9 +89,6 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
             String secretKey  = dest.getStringProperty("secretKey");
             String prefix     = dest.getStringProperty("prefix", "");
 
-            String piveauUrl       = dest.getStringProperty("piveauUrl");
-            String piveauApiKey    = dest.getStringProperty("piveauApiKey");
-
             monitor.info("  MinIO endpoint: " + endpoint);
             monitor.info("  MinIO bucket:   " + bucketName);
             monitor.info("  MinIO prefix:   " + (prefix == null || prefix.isEmpty() ? "(root)" : prefix));
@@ -107,12 +105,10 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
                 .httpClient(httpClient)
                 .build();
 
-            PiveauApiHandler piveauApiHandler = new PiveauApiHandler(piveauUrl, piveauApiKey, daliConnectorUrl, monitor);
-
             String httpDestinationUrl = dest.getStringProperty("baseUrl");
             String authKey            = dest.getStringProperty("authKey");
 
-            return new PiveauDataSink(minioClient, endpoint, bucketName, prefix, piveauApiHandler, monitor, executorService, rabbitConnectionFactory, rabbitQueue, httpDestinationUrl, authKey, experimentPrefix);
+            return new PiveauDataSink(minioClient, bucketName, prefix, monitor, executorService, rabbitConnectionFactory, rabbitQueue, httpDestinationUrl, authKey, experimentPrefix);
         } catch (Exception e) {
             monitor.severe("createSink failed for request " + request.getId() + ": " + e.getMessage(), e);
             throw e;
