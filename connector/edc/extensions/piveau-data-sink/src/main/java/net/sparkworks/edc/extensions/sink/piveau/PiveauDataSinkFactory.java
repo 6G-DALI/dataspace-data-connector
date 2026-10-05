@@ -43,6 +43,8 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
     private final ConnectionFactory rabbitConnectionFactory;
     private final String rabbitQueue;
     private final String experimentPrefix;
+    // Shared by every sink this factory creates: the source-directory -> UUID mapping.
+    private final DatasetDirectoryRegistry directories = new DatasetDirectoryRegistry();
 
     public PiveauDataSinkFactory(Monitor monitor, ExecutorService executorService,
                                  ConnectionFactory rabbitConnectionFactory, String rabbitQueue,
@@ -108,7 +110,7 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
             String httpDestinationUrl = dest.getStringProperty("baseUrl");
             String authKey            = dest.getStringProperty("authKey");
 
-            return new PiveauDataSink(minioClient, bucketName, prefix, monitor, executorService, rabbitConnectionFactory, rabbitQueue, httpDestinationUrl, authKey, experimentPrefix);
+            return new PiveauDataSink(minioClient, bucketName, prefix, monitor, executorService, rabbitConnectionFactory, rabbitQueue, httpDestinationUrl, authKey, experimentPrefix, directories);
         } catch (Exception e) {
             monitor.severe("createSink failed for request " + request.getId() + ": " + e.getMessage(), e);
             throw e;

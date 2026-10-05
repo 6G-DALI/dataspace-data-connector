@@ -1,11 +1,20 @@
 # piveau-data-sink
 
 EDC data sink for transfers of type `PiveauData`. It writes the transferred files to a
-MinIO/S3 destination (the data lake) under `<edc.experiment.prefix>-<dataset dir>/<file>` in a
-bucket named `edc.experiment.prefix`:
+MinIO/S3 destination (the data lake), in a bucket named `edc.experiment.prefix`. Nothing in the
+lake carries the testbed's own directory or file names:
 
-- `.json` (dataset `metadata.json`) is uploaded as-is.
-- `.csv` is uploaded, then a completion message is published to RabbitMQ if
+- A dataset's directory is a **random UUID**, not its directory name at the testbed. The first
+  file seen for a source directory creates the UUID, and the mapping is stored in the bucket as
+  `.datasets/<edc.experiment.prefix>-<source dir>` so it survives restarts.
+- `.json` (dataset `metadata.json`) is uploaded as `<dataset-uuid>/<file>`, keeping its name.
+- `.csv` is uploaded as `<dataset-uuid>/<file-uuid>.csv` (original extension kept). The file's
+  UUID is also remembered, as `.files/<edc.experiment.prefix>-<source dir>/<file name>`, so
+  sending the same file again overwrites the same object instead of adding a copy. The
+  original file name is stored as the object's `original-name` user metadata (URL-encoded).
+  The RabbitMQ message still carries the original `<dataset dir>/<file>.csv` name, since that
+  is what the testbed knows.
+  Then a completion message is published to RabbitMQ if
   `edc.rabbitmq.host` and `edc.rabbitmq.queue` are set. If the S3 upload fails and the
   destination has a `baseUrl`, the CSV is POSTed there instead.
 

@@ -32,14 +32,24 @@ import org.eclipse.edc.spi.monitor.Monitor;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
 /**
  * Data sink that writes transferred files to the destination MinIO / S3-compatible bucket
- * (the data lake), under {@code <experiment-id>/<file>}, and handles each by extension:
- * - .json files (dataset metadata): uploaded as-is
- * - .csv files: uploaded, then a completion message is published to RabbitMQ (when configured)
+ * (the data lake), and handles each by extension:
+ * - .json files (dataset metadata): uploaded as {@code <dataset-uuid>/<file>}
+ * - .csv files: uploaded as {@code <dataset-uuid>/<file-uuid>.csv}, then a completion message
+ *   is published to RabbitMQ (when configured)
+ *
+ * <p>Nothing in the data lake carries the testbed's own directory or file names. A dataset's
+ * directory is a random UUID (see {@link DatasetDirectoryRegistry}), and each data file is
+ * stored under a random UUID with its original extension. Both UUIDs are remembered, so the
+ * same dataset or file sent again goes to the same place. The original file name is kept as
+ * the {@code original-name} user metadata of the object (URL-encoded).
  *
  * <p>Registering datasets and distributions in the Piveau catalogue is not done here: the
  * s3-asset-monitor watches the data lake and registers them when the files appear.
@@ -55,11 +65,13 @@ public class PiveauDataSink implements DataSink {
     private final String httpDestinationUrl;
     private final String authKey;
     private final String experimentPrefix;
+    private final DatasetDirectoryRegistry directories;
 
     public PiveauDataSink(MinioClient minioClient, String bucketName, String prefix,
                           Monitor monitor, ExecutorService executorService,
                           ConnectionFactory rabbitConnectionFactory, String rabbitQueue,
-                          String httpDestinationUrl, String authKey, String experimentPrefix) {
+                          String httpDestinationUrl, String authKey, String experimentPrefix,
+                          DatasetDirectoryRegistry directories) {
         this.minioClient = minioClient;
         this.bucketName = bucketName;
         this.prefix = prefix != null ? prefix : "";
@@ -70,6 +82,7 @@ public class PiveauDataSink implements DataSink {
         this.httpDestinationUrl = httpDestinationUrl;
         this.authKey = authKey;
         this.experimentPrefix = experimentPrefix;
+        this.directories = directories;
     }
     
     @Override
@@ -122,7 +135,7 @@ public class PiveauDataSink implements DataSink {
         monitor.info("════════════════════════════════════════════════");
         monitor.info("Part Name: " + part.name());
         monitor.info("JSON file detected: " + fileName);
-        monitor.info("ExperimentId: " + experimentId);
+        monitor.info("Source dataset: " + experimentId);
         monitor.info("DestinationBucket: " + destinationBucket);
         monitor.info("════════════════════════════════════════════════");
 
@@ -137,7 +150,10 @@ public class PiveauDataSink implements DataSink {
                 minioClient.makeBucket(MakeBucketArgs.builder().bucket(destinationBucket).build());
                 monitor.info("Created bucket: " + destinationBucket);
             }
-            final String objectKey = experimentId + "/" + fileName;
+            // The dataset's directory in the lake is a random UUID, not its name at the testbed.
+            final String datasetDirectory = directories.directoryFor(minioClient, destinationBucket, experimentId);
+            final String objectKey = datasetDirectory + "/" + fileName;
+            monitor.info("Dataset directory: " + datasetDirectory);
             minioClient.putObject(
                 PutObjectArgs.builder()
                     .bucket(destinationBucket)
@@ -162,7 +178,7 @@ public class PiveauDataSink implements DataSink {
         monitor.info("Registering dataset to Data Lake (s3):");
         monitor.info("Part Name: " + part.name());
         monitor.info("CSV file detected: " + fileName);
-        monitor.info("ExperimentId: " + experimentId);
+        monitor.info("Source dataset: " + experimentId);
         monitor.info("DestinationBucket: " + destinationBucket);
         monitor.info("════════════════════════════════════════════════");
 
@@ -177,7 +193,12 @@ public class PiveauDataSink implements DataSink {
             try (var inputStream = part.openStream()) {
                 byte[] fileContent = inputStream.readAllBytes();
 
-                final String objectKey = experimentId + "/" + fileName;
+                // The file is stored under a random UUID (same extension) in its dataset's UUID
+                // directory; its original name travels as object metadata. The UUID is remembered
+                // per source file, so sending the same file again overwrites the same object.
+                final String datasetDirectory = directories.directoryFor(minioClient, destinationBucket, experimentId);
+                final String fileId = directories.fileIdFor(minioClient, destinationBucket, experimentId, fileName);
+                final String objectKey = datasetDirectory + "/" + fileId + extensionOf(fileName);
 
                 minioClient.putObject(
                     PutObjectArgs.builder()
@@ -185,10 +206,11 @@ public class PiveauDataSink implements DataSink {
                         .object(objectKey)
                         .stream(new ByteArrayInputStream(fileContent), fileContent.length, -1)
                         .contentType("application/octet-stream")
+                        .userMetadata(Map.of("original-name", URLEncoder.encode(fileName, StandardCharsets.UTF_8)))
                         .build()
                 );
 
-                monitor.info("✓ Uploaded '" + objectKey + "' (" + fileContent.length + " bytes) to bucket '" + destinationBucket + "'");
+                monitor.info("✓ Uploaded '" + fileName + "' as '" + objectKey + "' (" + fileContent.length + " bytes) to bucket '" + destinationBucket + "'");
 
                 sendRabbitNotification(part.name(), "SUCCESS");
             }
@@ -272,6 +294,12 @@ public class PiveauDataSink implements DataSink {
         }
         String normalizedPrefix = prefix.endsWith("/") ? prefix : prefix + "/";
         return normalizedPrefix + partName;
+    }
+
+    /** The file's extension including the dot ({@code .csv}), or an empty string when it has none. */
+    private String extensionOf(String fileName) {
+        int lastDot = fileName.lastIndexOf('.');
+        return lastDot > 0 ? fileName.substring(lastDot) : "";
     }
 
     /**
