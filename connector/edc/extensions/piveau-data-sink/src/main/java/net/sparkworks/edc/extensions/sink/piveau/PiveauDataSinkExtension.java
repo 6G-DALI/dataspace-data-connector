@@ -24,10 +24,10 @@ import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import java.util.concurrent.Executors;
 
 /**
- * Extension that registers the Piveau routing data sink.
- * Routes files to different destinations based on file type:
- * - JSON files: Piveau Hub Repo API
- * - CSV files: MinIO / S3-compatible bucket (configured per transfer via destination DataAddress)
+ * Extension that registers the {@code PiveauData} data sink, which writes transferred files to
+ * the MinIO / S3-compatible data lake (configured per transfer via the destination DataAddress)
+ * and notifies RabbitMQ when a CSV file has been stored. Catalogue registration is done by the
+ * s3-asset-monitor, not here.
  */
 public class PiveauDataSinkExtension implements ServiceExtension {
 
@@ -48,9 +48,6 @@ public class PiveauDataSinkExtension implements ServiceExtension {
 
     @Setting(value = "Experiment prefix used to build experiment name from directory name", required = false)
     private static final String EXPERIMENT_PREFIX = "edc.experiment.prefix";
-
-    @Setting(value = "DALI connector URL used in Piveau distribution endpoint", required = false)
-    private static final String DALI_CONNECTOR_URL = "edc.dali.connector.url";
 
     @Override
     public String name() {
@@ -82,13 +79,11 @@ public class PiveauDataSinkExtension implements ServiceExtension {
         }
 
         String experimentPrefix   = context.getSetting(EXPERIMENT_PREFIX, "");
-        String daliConnectorUrl   = context.getSetting(DALI_CONNECTOR_URL, "");
 
-        pipelineService.registerFactory(new PiveauDataSinkFactory(monitor, executorService, rabbitConnectionFactory, rabbitQueue, experimentPrefix, daliConnectorUrl));
+        pipelineService.registerFactory(new PiveauDataSinkFactory(monitor, executorService, rabbitConnectionFactory, rabbitQueue, experimentPrefix));
 
         monitor.info("✓ Piveau Routing Data Sink registered");
         monitor.info("  Type: PiveauData");
-        monitor.info("  JSON files → Piveau Hub Repo API (configured per transfer)");
-        monitor.info("  CSV files  → MinIO bucket (configured per transfer)");
+        monitor.info("  JSON and CSV files → MinIO bucket (configured per transfer)");
     }
 }

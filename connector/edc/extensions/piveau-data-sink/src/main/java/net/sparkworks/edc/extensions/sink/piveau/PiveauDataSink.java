@@ -21,7 +21,6 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
-import net.sparkworks.edc.extensions.sink.piveau.common.PiveauApiHandler;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -33,38 +32,49 @@ import org.eclipse.edc.spi.monitor.Monitor;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.file.Path;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Data sink that routes files based on extension:
- * - .json files: Register dataset to Piveau Hub Repo API (consume, don't forward)
- * - .csv files: Upload to a MinIO / S3-compatible bucket
+ * Data sink that writes transferred files to the destination MinIO / S3-compatible bucket
+ * (the data lake), and handles each by extension:
+ * - .json files (dataset metadata): uploaded as {@code <dataset-uuid>/<file>}
+ * - .csv files: uploaded as {@code <dataset-uuid>/<file-uuid>.csv}, then a completion message
+ *   is published to RabbitMQ (when configured)
+ *
+ * <p>Nothing in the data lake carries the testbed's own directory or file names. A dataset's
+ * directory is a random UUID (see {@link DatasetDirectoryRegistry}), and each data file is
+ * stored under a random UUID with its original extension. Both UUIDs are remembered, so the
+ * same dataset or file sent again goes to the same place. The original file name is kept as
+ * the {@code original-name} user metadata of the object (URL-encoded).
+ *
+ * <p>Registering datasets and distributions in the Piveau catalogue is not done here: the
+ * s3-asset-monitor watches the data lake and registers them when the files appear.
  */
 public class PiveauDataSink implements DataSink {
     private final MinioClient minioClient;
-    private final String minioEndpoint;
     private final String bucketName;
     private final String prefix;
     private final Monitor monitor;
-    private final PiveauApiHandler piveauApiHandler;
     private final ExecutorService executorService;
     private final ConnectionFactory rabbitConnectionFactory;
     private final String rabbitQueue;
     private final String httpDestinationUrl;
     private final String authKey;
     private final String experimentPrefix;
+    private final DatasetDirectoryRegistry directories;
 
-    public PiveauDataSink(MinioClient minioClient, String minioEndpoint, String bucketName, String prefix,
-                          PiveauApiHandler piveauApiHandler, Monitor monitor, ExecutorService executorService,
+    public PiveauDataSink(MinioClient minioClient, String bucketName, String prefix,
+                          Monitor monitor, ExecutorService executorService,
                           ConnectionFactory rabbitConnectionFactory, String rabbitQueue,
-                          String httpDestinationUrl, String authKey, String experimentPrefix) {
+                          String httpDestinationUrl, String authKey, String experimentPrefix,
+                          DatasetDirectoryRegistry directories) {
         this.minioClient = minioClient;
-        this.minioEndpoint = minioEndpoint;
         this.bucketName = bucketName;
         this.prefix = prefix != null ? prefix : "";
-        this.piveauApiHandler = piveauApiHandler;
         this.monitor = monitor;
         this.executorService = executorService;
         this.rabbitConnectionFactory = rabbitConnectionFactory;
@@ -72,6 +82,7 @@ public class PiveauDataSink implements DataSink {
         this.httpDestinationUrl = httpDestinationUrl;
         this.authKey = authKey;
         this.experimentPrefix = experimentPrefix;
+        this.directories = directories;
     }
     
     @Override
@@ -114,7 +125,7 @@ public class PiveauDataSink implements DataSink {
     }
     
     /**
-     * Handle JSON file - register to Piveau Hub Repo API
+     * Handle a JSON (dataset metadata) file - upload it to the data lake next to the data files.
      */
     private void handleJsonFile(DataSource.Part part) {
         String dirName = extractDirName(part.name());
@@ -124,41 +135,25 @@ public class PiveauDataSink implements DataSink {
         monitor.info("════════════════════════════════════════════════");
         monitor.info("Part Name: " + part.name());
         monitor.info("JSON file detected: " + fileName);
-        monitor.info("experimentPrefix: " + experimentPrefix);
-        monitor.info("ExperimentId: " + experimentId);
+        monitor.info("Source dataset: " + experimentId);
         monitor.info("DestinationBucket: " + destinationBucket);
-        monitor.info("Registering dataset to Piveau Hub Repo API");
-        monitor.info("File will NOT be forwarded to downstream");
         monitor.info("════════════════════════════════════════════════");
-        
+
         try {
-            // Read JSON content once — used for both Piveau registration and MinIO upload
             byte[] fileBytes;
             try (var inputStream = part.openStream()) {
                 fileBytes = inputStream.readAllBytes();
             }
-            String jsonContent = new String(fileBytes);
 
-            // Register to Piveau Hub Repo
-            if (piveauApiHandler != null) {
-                try {
-                    String datasetId = piveauApiHandler.handleJsonFile(experimentId, fileName, destinationBucket, Path.of(fileName), jsonContent);
-                    monitor.info("✓ Dataset registered to Piveau Hub Repo: " + datasetId);
-                } catch (IOException e) {
-                    monitor.warning("⚠ Failed to register dataset '" + experimentId + "' to Piveau: " + e.getMessage() + " — scheduling retry");
-                    piveauApiHandler.schedulePendingDataset(experimentId, fileName, destinationBucket, jsonContent);
-                }
-            } else {
-                monitor.warning("⚠ Piveau API handler is not configured, skipping registration");
-            }
-
-            // Upload JSON file to MinIO
             boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(destinationBucket).build());
             if (!exists) {
                 minioClient.makeBucket(MakeBucketArgs.builder().bucket(destinationBucket).build());
                 monitor.info("Created bucket: " + destinationBucket);
             }
-            final String objectKey = experimentId + "/" + fileName;
+            // The dataset's directory in the lake is a random UUID, not its name at the testbed.
+            final String datasetDirectory = directories.directoryFor(minioClient, destinationBucket, experimentId);
+            final String objectKey = datasetDirectory + "/" + fileName;
+            monitor.info("Dataset directory: " + datasetDirectory);
             minioClient.putObject(
                 PutObjectArgs.builder()
                     .bucket(destinationBucket)
@@ -173,7 +168,7 @@ public class PiveauDataSink implements DataSink {
             monitor.severe("✗ Failed to upload JSON file to MinIO: " + fileName, e);
         }
     }
-    
+
     private void handleCsvFile(DataSource.Part part) {
         String dirName = extractDirName(part.name());
         String fileName = extractFileName(part.name());
@@ -183,7 +178,7 @@ public class PiveauDataSink implements DataSink {
         monitor.info("Registering dataset to Data Lake (s3):");
         monitor.info("Part Name: " + part.name());
         monitor.info("CSV file detected: " + fileName);
-        monitor.info("ExperimentId: " + experimentId);
+        monitor.info("Source dataset: " + experimentId);
         monitor.info("DestinationBucket: " + destinationBucket);
         monitor.info("════════════════════════════════════════════════");
 
@@ -198,25 +193,12 @@ public class PiveauDataSink implements DataSink {
             try (var inputStream = part.openStream()) {
                 byte[] fileContent = inputStream.readAllBytes();
 
-                final String objectKey = experimentId + "/" + fileName;
-                final String downloadUrl = buildDownloadUrl(destinationBucket, objectKey);
-
-                // Create distribution in Piveau for this file (only if dataset is already registered)
-                if (piveauApiHandler != null && dirName != null) {
-                    if (piveauApiHandler.datasetExists(experimentId, destinationBucket)) {
-                        try {
-                            String distributionId = piveauApiHandler.createDistribution(experimentId, fileName, downloadUrl);
-                            monitor.info("✓ Distribution created in Piveau: " + distributionId);
-                        } catch (IOException e) {
-                            monitor.warning("⚠ Failed to create distribution in Piveau: " + e.getMessage());
-                            // Continue with upload even if distribution creation fails
-                        }
-                    } else {
-                        piveauApiHandler.schedulePendingDistribution(experimentId, fileName, destinationBucket, downloadUrl);
-                    }
-                } else {
-                    monitor.warning("⚠ Piveau API handler not configured or dataset ID not available, skipping distribution creation");
-                }
+                // The file is stored under a random UUID (same extension) in its dataset's UUID
+                // directory; its original name travels as object metadata. The UUID is remembered
+                // per source file, so sending the same file again overwrites the same object.
+                final String datasetDirectory = directories.directoryFor(minioClient, destinationBucket, experimentId);
+                final String fileId = directories.fileIdFor(minioClient, destinationBucket, experimentId, fileName);
+                final String objectKey = datasetDirectory + "/" + fileId + extensionOf(fileName);
 
                 minioClient.putObject(
                     PutObjectArgs.builder()
@@ -224,10 +206,11 @@ public class PiveauDataSink implements DataSink {
                         .object(objectKey)
                         .stream(new ByteArrayInputStream(fileContent), fileContent.length, -1)
                         .contentType("application/octet-stream")
+                        .userMetadata(Map.of("original-name", URLEncoder.encode(fileName, StandardCharsets.UTF_8)))
                         .build()
                 );
 
-                monitor.info("✓ Uploaded '" + objectKey + "' (" + fileContent.length + " bytes) to bucket '" + destinationBucket + "'");
+                monitor.info("✓ Uploaded '" + fileName + "' as '" + objectKey + "' (" + fileContent.length + " bytes) to bucket '" + destinationBucket + "'");
 
                 sendRabbitNotification(part.name(), "SUCCESS");
             }
@@ -275,17 +258,6 @@ public class PiveauDataSink implements DataSink {
         try (var inputStream = part.openStream()) {
             byte[] fileContent = inputStream.readAllBytes();
 
-            // Create distribution in Piveau for this file — no downloadUrl here: the file is
-            // forwarded over HTTP, not placed in S3, so there's no object location to record.
-            if (piveauApiHandler != null && dirName != null) {
-                try {
-                    String distributionId = piveauApiHandler.createDistribution(experimentId, fileName, null);
-                    monitor.info("✓ Distribution created in Piveau: " + distributionId);
-                } catch (IOException e) {
-                    monitor.warning("⚠ Failed to create distribution in Piveau: " + e.getMessage());
-                }
-            }
-
             var requestBody = RequestBody.create(fileContent, MediaType.parse("application/octet-stream"));
 
             var requestBuilder = new Request.Builder()
@@ -324,19 +296,12 @@ public class PiveauDataSink implements DataSink {
         return normalizedPrefix + partName;
     }
 
-    /**
-     * The actual S3/MinIO URL a distribution's file was uploaded to — recorded as
-     * dcat:downloadURL (see PiveauApiHandler.buildDistributionTurtle), distinct from
-     * dcat:accessURL (the EDC connector's negotiation entrypoint, set unconditionally there).
-     */
-    private String buildDownloadUrl(String bucket, String objectKey) {
-        if (minioEndpoint == null || minioEndpoint.isEmpty()) {
-            return null;
-        }
-        String base = minioEndpoint.endsWith("/") ? minioEndpoint.substring(0, minioEndpoint.length() - 1) : minioEndpoint;
-        return base + "/" + bucket + "/" + objectKey;
+    /** The file's extension including the dot ({@code .csv}), or an empty string when it has none. */
+    private String extensionOf(String fileName) {
+        int lastDot = fileName.lastIndexOf('.');
+        return lastDot > 0 ? fileName.substring(lastDot) : "";
     }
-    
+
     /**
      * Extract filename from full path
      */
