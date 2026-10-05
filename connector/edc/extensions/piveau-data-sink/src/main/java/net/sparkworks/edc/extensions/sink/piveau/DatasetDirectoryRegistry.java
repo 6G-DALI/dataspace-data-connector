@@ -35,8 +35,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * again must also land on the same object, not a second copy. So the first time a source
  * directory, or a file within it, is seen a UUID is created, and the mapping is persisted in the
  * bucket as a small object under {@value #DATASET_PREFIX} or {@value #FILE_PREFIX}, so it
- * survives a connector restart. The objects have no file extension, so the s3-asset-monitor,
- * which only looks at {@code .csv} files and {@code metadata.json}, ignores them.
+ * survives a connector restart. The keys start with a dot, and the s3-asset-monitor skips any
+ * path with a dot-prefixed segment. This matters: a file mapping is named after the source file,
+ * so it can end in {@code .csv} and would otherwise be taken for a data file.
  */
 public class DatasetDirectoryRegistry {
 
