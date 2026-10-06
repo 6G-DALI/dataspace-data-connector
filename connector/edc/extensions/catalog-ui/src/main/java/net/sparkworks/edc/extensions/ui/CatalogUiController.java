@@ -139,16 +139,27 @@ public class CatalogUiController {
         }
     }
 
+    /**
+     * Lists the connector's assets. With {@code ?type=A,B} only assets whose data address type is one of
+     * those are returned (for example {@code ?type=6GDaliTestbedExperiments}); without it every asset is
+     * listed, as before. The same image runs the central connector, whose assets are of other types.
+     */
     @GET
     @Path("catalog/api/assets")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response listAssets() {
+    public Response listAssets(@jakarta.ws.rs.QueryParam("type") String types) {
         try {
+            Set<String> wantedTypes = (types == null || types.isBlank()) ? null
+                    : java.util.Arrays.stream(types.split(",")).map(String::trim).filter(t -> !t.isEmpty())
+                            .collect(Collectors.toSet());
             var query = QuerySpec.Builder.newInstance().build();
             var assets = assetIndex.queryAssets(query).collect(Collectors.toList());
 
             ArrayNode arr = MAPPER.createArrayNode();
             for (var asset : assets) {
+                if (wantedTypes != null && !wantedTypes.contains(asset.getDataAddress().getType())) {
+                    continue;
+                }
                 ObjectNode node = MAPPER.createObjectNode();
                 node.put("id", asset.getId());
                 node.put("name", asset.getName() != null ? asset.getName() : asset.getId());

@@ -17,6 +17,9 @@ public class CatalogUiExtension implements ServiceExtension {
     @Setting(value = "Expose the '+ Submit Dataset' page and its upload/validation endpoints", defaultValue = "false", required = false)
     private static final String SUBMIT_ENABLED = "edc.catalog.ui.submit.enabled";
 
+    @Setting(value = "Admin key (sent as X-Api-Key) enabling the 'Register asset' page, where an operator registers the dataset bucket as an asset. Unset = page and endpoints disabled", required = false)
+    private static final String ASSET_ADMIN_KEY = "edc.catalog.ui.asset.admin.key";
+
     @Inject
     private WebService webService;
 
@@ -61,6 +64,13 @@ public class CatalogUiExtension implements ServiceExtension {
                 participantId
         );
         webService.registerResource(controller);
+
+        String assetAdminKey = context.getSetting(ASSET_ADMIN_KEY, "");
+        webService.registerResource(new AssetRegistrationController(
+                assetIndex, policyDefinitionStore, contractDefinitionStore, monitor, assetAdminKey));
+        if (!assetAdminKey.isBlank()) {
+            monitor.info("Asset registration page available at http://localhost:<http-port>/api/catalog/register-asset");
+        }
 
         monitor.info("Catalog UI available at http://localhost:<http-port>/api/catalog"
                 + (submitEnabled ? " (dataset submission enabled)" : " (dataset submission disabled)"));

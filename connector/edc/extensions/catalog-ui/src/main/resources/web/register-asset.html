@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Space — Register dataset asset</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; background: #f5f7fa; color: #333; }
+    header { background: #1a237e; color: #fff; padding: 1rem 2rem; }
+    header .row { display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 1.4rem; font-weight: 600; }
+    header p { font-size: .85rem; opacity: .8; margin-top: .3rem; }
+    header a { color: rgba(255,255,255,.7); text-decoration: none; font-size: .85rem; font-weight: 600; }
+    header a:hover { color: #fff; }
+    .page { max-width: 760px; margin: 32px auto 72px; padding: 0 20px; }
+    .card { background: #fff; border: 1px solid #d0d9e8; border-radius: 6px; padding: 20px 24px; margin-bottom: 24px; }
+    h2 { font-size: 16px; margin-bottom: 14px; color: #0a1628; }
+    label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; color: #3b4a63; }
+    input { width: 100%; padding: 8px 10px; border: 1px solid #c3cde0; border-radius: 4px; font-size: 14px; }
+    .hint { font-size: 12px; color: #6b7a94; margin-top: 3px; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+    button { margin-top: 18px; padding: 9px 18px; border: 0; border-radius: 4px; background: #1a237e; color: #fff; font-weight: 600; cursor: pointer; }
+    button.danger { background: #b71c1c; margin: 0; padding: 4px 10px; font-size: 12px; }
+    button:disabled { opacity: .5; cursor: default; }
+    .msg { margin-top: 14px; padding: 10px 12px; border-radius: 4px; font-size: 13px; display: none; }
+    .msg.ok { display: block; background: #e8f5e9; color: #1b5e20; }
+    .msg.err { display: block; background: #ffebee; color: #b71c1c; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { text-align: left; padding: 7px 6px; border-bottom: 1px solid #e3e8f1; font-size: 13px; }
+    code { background: #eef1f7; padding: 1px 5px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <div>
+        <h1>Register dataset asset</h1>
+        <p>Offer this testbed's dataset bucket to the 6G-DALI Data Space</p>
+      </div>
+      <a href="/api/catalog">&larr; Catalog</a>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="card">
+      <h2>Connector admin key</h2>
+      <label for="adminKey">Admin key</label>
+      <input id="adminKey" type="password" autocomplete="off" />
+      <div class="hint">The value of <code>edc.catalog.ui.asset.admin.key</code> in this connector's properties. Kept in this page only.</div>
+    </div>
+
+    <div class="card">
+      <h2>Bucket asset</h2>
+      <label for="assetId">Asset id</label>
+      <input id="assetId" placeholder="e.g. kul-experiments-1" />
+      <div class="hint">Use the id the platform administrator gave you, if any.</div>
+      <div class="cols">
+        <div>
+          <label for="endpoint">S3 endpoint (as seen from this connector)</label>
+          <input id="endpoint" value="http://rustfs:9000" />
+        </div>
+        <div>
+          <label for="bucketName">Bucket</label>
+          <input id="bucketName" />
+        </div>
+        <div>
+          <label for="accessKey">Access key</label>
+          <input id="accessKey" autocomplete="off" />
+        </div>
+        <div>
+          <label for="secretKey">Secret key</label>
+          <input id="secretKey" type="password" autocomplete="off" />
+        </div>
+      </div>
+      <label for="prefix">Prefix (optional)</label>
+      <input id="prefix" placeholder="leave empty to watch the whole bucket" />
+      <button id="register">Register asset</button>
+      <div id="msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Registered assets</h2>
+      <table><thead><tr><th>Asset id</th><th></th></tr></thead><tbody id="assets"></tbody></table>
+      <div id="others" class="hint" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id)
+    const msg = (text, ok) => { const m = $('msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err') }
+    const headers = () => ({ 'Content-Type': 'application/json', 'X-Api-Key': $('adminKey').value })
+
+    // Only assets of this type can be transferred by the testbed data plane (source type of the
+    // 'minio-asset-dataplane'). Assets of other types (e.g. the former 'MinioFiles') are hidden here,
+    // but counted, so a mismatch is not silently invisible.
+    const ASSET_TYPE = '6GDaliTestbedExperiments'
+    let showOthers = false
+
+    async function loadAssets() {
+      const body = $('assets')
+      body.innerHTML = ''
+      $('others').textContent = ''
+      try {
+        const res = await fetch('/api/catalog/api/assets')
+        const all = await res.json()
+        const mine = all.filter(a => a.dataAddress && a.dataAddress.type === ASSET_TYPE)
+        const others = all.filter(a => !(a.dataAddress && a.dataAddress.type === ASSET_TYPE))
+        const rows = showOthers ? all : mine
+        for (const a of rows) {
+          const tr = document.createElement('tr')
+          const id = document.createElement('td')
+          id.textContent = a.id
+          if (!(a.dataAddress && a.dataAddress.type === ASSET_TYPE)) {
+            const tag = document.createElement('span')
+            tag.textContent = ' ' + (a.dataAddress ? a.dataAddress.type : 'unknown type') + ' (cannot be transferred)'
+            tag.style.color = '#b71c1c'
+            id.appendChild(tag)
+          }
+          const act = document.createElement('td')
+          const del = document.createElement('button'); del.className = 'danger'; del.textContent = 'Remove'
+          del.onclick = () => remove(a.id)
+          act.appendChild(del); tr.append(id, act); body.appendChild(tr)
+        }
+        if (!rows.length) body.innerHTML = '<tr><td colspan="2">None yet</td></tr>'
+        if (others.length) {
+          const types = [...new Set(others.map(a => a.dataAddress ? a.dataAddress.type : 'unknown'))].join(', ')
+          const link = document.createElement('a')
+          link.href = '#'
+          link.textContent = showOthers ? 'hide them' : 'show them'
+          link.onclick = e => { e.preventDefault(); showOthers = !showOthers; loadAssets() }
+          $('others').append(others.length + ' asset(s) of other types (' + types + ') ' +
+            (showOthers ? 'shown. ' : 'hidden. '), link)
+        }
+      } catch (e) { body.innerHTML = '<tr><td colspan="2">Could not load assets</td></tr>' }
+    }
+
+    async function remove(id) {
+      if (!confirm('Remove asset ' + id + '?')) return
+      const res = await fetch('/api/catalog/api/admin/assets/' + encodeURIComponent(id), { method: 'DELETE', headers: headers() })
+      const data = await res.json().catch(() => ({}))
+      msg(res.ok ? 'Removed ' + id : (data.error || res.statusText), res.ok)
+      loadAssets()
+    }
+
+    $('register').onclick = async () => {
+      const btn = $('register'); btn.disabled = true
+      try {
+        const res = await fetch('/api/catalog/api/admin/assets', {
+          method: 'POST', headers: headers(),
+          body: JSON.stringify({
+            assetId: $('assetId').value, endpoint: $('endpoint').value, bucketName: $('bucketName').value,
+            accessKey: $('accessKey').value, secretKey: $('secretKey').value, prefix: $('prefix').value,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        msg(res.ok ? 'Registered. Policy: ' + data.policy + ', contract definition: ' + data.contractDefinition
+                   : (data.error || res.statusText), res.ok)
+        if (res.ok) loadAssets()
+      } finally { btn.disabled = false }
+    }
+    loadAssets()
+  </script>
+</body>
+</html>
