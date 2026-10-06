@@ -27,6 +27,8 @@ dependencies {
     implementation(libs.edc.configuration.filesystem)
     implementation(libs.edc.iam.mock)
     implementation(libs.edc.management.api)
+    // API-key auth for the management API: set edc.api.auth.key (or env EDC_API_AUTH_KEY)
+    implementation(libs.edc.auth.tokenbased)
     implementation(libs.edc.transfer.data.plane.signaling)
     implementation(libs.edc.validator.data.address.http.data)
 

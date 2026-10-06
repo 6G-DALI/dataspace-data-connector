@@ -386,7 +386,7 @@ public class CatalogUiController {
             var da = asset.getDataAddress();
             var type = da.getType();
 
-            if ("MinioAsset".equals(type) || "MinioFiles".equals(type)) {
+            if ("MinioAsset".equals(type) || "6GDaliTestbedExperiments".equals(type)) {
                 var endpoint = da.getStringProperty("endpoint");
                 var bucket = da.getStringProperty("bucketName");
                 var accessKey = da.getStringProperty("accessKey");
@@ -521,7 +521,7 @@ public class CatalogUiController {
 
             var da = asset.getDataAddress();
             var type = da.getType();
-            if (!"MinioAsset".equals(type) && !"MinioFiles".equals(type)) {
+            if (!"MinioAsset".equals(type) && !"6GDaliTestbedExperiments".equals(type)) {
                 return Response.status(400).entity("{\"error\":\"preview is only supported for MinIO-backed assets\"}").build();
             }
 
@@ -576,7 +576,7 @@ public class CatalogUiController {
 
             var da = asset.getDataAddress();
             var type = da.getType();
-            if (!"MinioAsset".equals(type) && !"MinioFiles".equals(type)) {
+            if (!"MinioAsset".equals(type) && !"6GDaliTestbedExperiments".equals(type)) {
                 return Response.status(400).entity("{\"error\":\"validation reports are only supported for MinIO-backed assets\"}").build();
             }
 

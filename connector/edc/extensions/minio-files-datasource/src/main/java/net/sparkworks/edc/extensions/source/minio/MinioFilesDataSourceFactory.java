@@ -32,7 +32,7 @@ public class MinioFilesDataSourceFactory implements DataSourceFactory {
     
     @Override
     public String supportedType() {
-        return "MinioFiles";
+        return "6GDaliTestbedExperiments";
     }
     
     @Override

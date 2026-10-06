@@ -62,7 +62,7 @@ public class MinioAssetTransferExtension implements ServiceExtension {
         var instance = DataPlaneInstance.Builder.newInstance()
                 .id("minio-asset-dataplane")
                 .url(url)
-                .allowedSourceTypes(Set.of("MinioAsset", "MinioFiles", "HttpData"))
+                .allowedSourceTypes(Set.of("MinioAsset", "6GDaliTestbedExperiments", "HttpData"))
                 .allowedTransferType(Set.of("HttpData-PUSH", "PresignedHttpData-PUSH"))
                 .build();
 

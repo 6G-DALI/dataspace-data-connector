@@ -35,7 +35,7 @@ provider_helper = provider.ProviderHelper(
 asset_name = os.getenv('ASSET_NAME')
 
 data_address = {
-    "type": "MinioFiles",
+    "type": "6GDaliTestbedExperiments",
     "endpoint": os.getenv('MINIO_ENDPOINT'),
     "bucketName": os.getenv('MINIO_BUCKET_NAME'),
     "accessKey": os.getenv('MINIO_ACCESS_KEY'),
