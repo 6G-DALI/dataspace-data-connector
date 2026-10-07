@@ -1,7 +1,9 @@
 name: Deploy DALI Testbed Connector
 
 on:
-  workflow_dispatch:  # Manual trigger only
+  push:
+    branches: [master]
+  workflow_dispatch:  # can still be run by hand
 
 env:
   REGISTRY: ghcr.io
