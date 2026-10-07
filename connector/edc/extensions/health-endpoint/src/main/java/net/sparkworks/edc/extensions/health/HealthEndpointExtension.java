@@ -17,7 +17,9 @@ public class HealthEndpointExtension implements ServiceExtension {
 
     @Override
     public void initialize(ServiceExtensionContext context) {
-        webService.registerResource(new HealthApiController(context.getMonitor()));
-        context.getMonitor().info("Health endpoint available at http://localhost:<http-port>/api/health");
+        var controller = new HealthApiController(context.getMonitor());
+        webService.registerResource(controller);
+        context.getMonitor().info("Health endpoint available at http://localhost:<http-port>/api/health, build "
+                + controller.buildSummary());
     }
 }

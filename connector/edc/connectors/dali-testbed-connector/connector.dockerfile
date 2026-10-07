@@ -8,6 +8,13 @@ WORKDIR /usr/src/app
 # Copy the current directory contents into the container at /usr/src/app
 COPY build/libs/connector.jar .
 
+# Which build this image is: passed by the deploy workflow, reported by GET /api/health. Declared after the
+# jar is copied so a new commit does not invalidate the cached layers above.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV BUILD_SHA=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 # Specify the command to run the application
 CMD  java -jar -Dedc.fs.config=connector.properties connector.jar
 

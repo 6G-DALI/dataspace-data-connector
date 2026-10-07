@@ -69,9 +69,15 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest
 
+      - name: Build time
+        run: echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ env.BUILD_TIME }}
           context: connector/edc/connectors/dali-testbed-connector
           file: connector/edc/connectors/dali-testbed-connector/connector.dockerfile
           platforms: linux/amd64,linux/arm64
