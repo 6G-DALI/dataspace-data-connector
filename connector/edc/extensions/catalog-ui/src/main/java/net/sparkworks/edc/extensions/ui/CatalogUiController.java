@@ -65,6 +65,7 @@ public class CatalogUiController {
     private final TransferProcessService transferProcessService;
     private final Monitor monitor;
     private final boolean submitEnabled;
+    private final boolean assetAdminEnabled;
     private final String participantId;
 
     public CatalogUiController(AssetIndex assetIndex,
@@ -75,6 +76,7 @@ public class CatalogUiController {
                                TransferProcessService transferProcessService,
                                Monitor monitor,
                                boolean submitEnabled,
+                               boolean assetAdminEnabled,
                                String participantId) {
         this.assetIndex = assetIndex;
         this.contractDefinitionStore = contractDefinitionStore;
@@ -84,6 +86,7 @@ public class CatalogUiController {
         this.transferProcessService = transferProcessService;
         this.monitor = monitor;
         this.submitEnabled = submitEnabled;
+        this.assetAdminEnabled = assetAdminEnabled;
         this.participantId = participantId;
     }
 
@@ -118,6 +121,10 @@ public class CatalogUiController {
                 // Strip everything between the markers so the nav link to the
                 // (disabled) submit page is not rendered.
                 html = html.replaceAll("(?s)<!--SUBMIT_LINK-->.*?<!--/SUBMIT_LINK-->", "");
+            }
+            if (!assetAdminEnabled) {
+                // Same for the "Testbed asset" card and panel, which need edc.catalog.ui.asset.admin.key.
+                html = html.replaceAll("(?s)<!--ASSET_ADMIN-->.*?<!--/ASSET_ADMIN-->", "");
             }
             return Response.ok(html).build();
         } catch (Exception e) {

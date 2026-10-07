@@ -24,7 +24,6 @@ import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HashMap;
@@ -100,15 +99,9 @@ public class AssetRegistrationController {
         if (!enabled()) {
             return Response.status(404).entity("Asset registration is disabled on this connector").build();
         }
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream("web/register-asset.html")) {
-            if (is == null) {
-                return Response.status(404).entity("web/register-asset.html not found").build();
-            }
-            return Response.ok(new String(is.readAllBytes(), StandardCharsets.UTF_8)).build();
-        } catch (Exception e) {
-            monitor.severe("Failed to serve the asset registration page", e);
-            return Response.serverError().entity("Error loading page").build();
-        }
+        // The registration form now lives on the catalogue page (its "Testbed asset" panel). This old URL
+        // is kept so existing links and bookmarks still work.
+        return Response.status(302).header("Location", "../catalog#testbed-asset").build();
     }
 
     @POST

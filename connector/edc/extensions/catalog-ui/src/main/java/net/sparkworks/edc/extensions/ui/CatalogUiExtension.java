@@ -52,6 +52,8 @@ public class CatalogUiExtension implements ServiceExtension {
         boolean submitEnabled = context.getSetting(SUBMIT_ENABLED, false);
         String participantId = context.getSetting("edc.participant.id", "unknown");
 
+        String assetAdminKey = context.getSetting(ASSET_ADMIN_KEY, "");
+
         var controller = new CatalogUiController(
                 assetIndex,
                 contractDefinitionStore,
@@ -61,15 +63,15 @@ public class CatalogUiExtension implements ServiceExtension {
                 transferProcessService,
                 monitor,
                 submitEnabled,
+                !assetAdminKey.isBlank(),
                 participantId
         );
         webService.registerResource(controller);
 
-        String assetAdminKey = context.getSetting(ASSET_ADMIN_KEY, "");
         webService.registerResource(new AssetRegistrationController(
                 assetIndex, policyDefinitionStore, contractDefinitionStore, monitor, assetAdminKey));
         if (!assetAdminKey.isBlank()) {
-            monitor.info("Asset registration page available at http://localhost:<http-port>/api/catalog/register-asset");
+            monitor.info("Testbed asset administration available on the catalogue page, at http://localhost:<http-port>/api/catalog#testbed-asset");
         }
 
         monitor.info("Catalog UI available at http://localhost:<http-port>/api/catalog"

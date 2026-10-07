@@ -122,6 +122,27 @@
         .asset-prov { font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.15rem; }
         .lineage-legend { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; font-size: 0.78rem; color: var(--text-secondary); }
         .lineage-legend > span { display: inline-flex; align-items: center; gap: 0.3rem; }
+        /* testbed asset panel (merged in from the former register-asset page) */
+        .asset-badge.testbed-badge { background: rgba(var(--accent-green-rgb), 0.15); color: var(--accent-green); }
+        .tb-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-panel); padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+        .tb-card h2 { font-size: 1rem; font-family: var(--font-display); color: var(--accent-cyan); margin-bottom: 0.9rem; }
+        .tb-card label { display: block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); margin: 0.9rem 0 0.3rem; }
+        .tb-card input { width: 100%; padding: 0.7rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 0.9rem; background: var(--bg-surface); color: var(--text-primary); }
+        .tb-card input:focus { outline: none; border-color: var(--accent-cyan); box-shadow: var(--shadow-focus); }
+        .tb-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+        .tb-hint code { font-family: var(--font-mono); background: var(--bg-elevated); padding: 0.1rem 0.4rem; border-radius: var(--radius-sm); }
+        .tb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+        .tb-actions { margin-top: 1.1rem; }
+        .tb-asset { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.8rem 0; border-top: 1px solid var(--border); }
+        .tb-asset:first-child { border-top: none; padding-top: 0; }
+        .tb-asset .meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.2rem; word-break: break-all; }
+        .tb-asset .buttons { white-space: nowrap; }
+        .tb-message { display: none; padding: 0.8rem 1rem; border-radius: var(--radius-md); margin-bottom: 1.25rem; font-size: 0.85rem; }
+        .tb-message.ok { display: block; background: rgba(var(--accent-green-rgb), 0.12); color: var(--accent-green); }
+        .tb-message.err { display: block; background: rgba(var(--accent-red-rgb), 0.12); color: var(--accent-red); }
+        .btn-download.tb-danger { border-color: var(--accent-red); color: var(--accent-red); }
+        .btn-download.tb-danger:hover { background: var(--accent-red); color: var(--text-inverse); }
+        .tb-hidden { display: none; }
     </style>
 </head>
 <body>
@@ -156,6 +177,7 @@
             <div class="stat-card" onclick="showPanel('agreements', this)"><div class="label">Agreements</div><div class="value" id="agreement-count">-</div></div>
             <div class="stat-card" onclick="showPanel('negotiations', this)"><div class="label">Negotiations</div><div class="value" id="negotiation-count">-</div></div>
             <div class="stat-card" onclick="showPanel('transfers', this)"><div class="label">Transfers</div><div class="value" id="transfer-count">-</div></div>
+            <!--ASSET_ADMIN--><div class="stat-card" id="testbed-card" onclick="showPanel('testbed', this)"><div class="label">Testbed asset</div><div class="value" id="testbed-state">-</div></div><!--/ASSET_ADMIN-->
         </div>
 
         <div id="assets-panel" class="panel active">
@@ -187,6 +209,55 @@
             <div id="transfers-table"><div class="loading">Loading...</div></div>
         </div>
 
+        <!--ASSET_ADMIN-->
+        <div id="testbed-panel" class="panel">
+            <div id="tb-msg" class="tb-message"></div>
+
+            <div class="tb-card">
+                <h2>Connector admin key</h2>
+                <label for="tb-key" style="margin-top:0">Admin key</label>
+                <input id="tb-key" type="password" autocomplete="off">
+                <div class="tb-hint">The value of <code>edc.catalog.ui.asset.admin.key</code> in this connector's properties. Kept in this page only.</div>
+            </div>
+
+            <!-- 1. the testbed asset is chosen -->
+            <div id="tb-current" class="tb-card tb-hidden">
+                <h2>Your testbed asset</h2>
+                <div id="tb-current-list"></div>
+                <div class="tb-hint" style="margin-top:0.9rem">A testbed has a single asset. Remove it to register or choose a different one.</div>
+            </div>
+
+            <!-- 2. assets exist, none chosen yet -->
+            <div id="tb-pick" class="tb-card tb-hidden">
+                <h2>Choose your testbed asset</h2>
+                <div class="tb-hint" style="margin:-0.4rem 0 0.9rem">
+                    This connector already has the asset(s) below. A testbed has a single asset: use one of them, or remove them to register a new one.
+                </div>
+                <div id="tb-pick-list"></div>
+            </div>
+
+            <!-- 3. nothing yet: register -->
+            <div id="tb-register" class="tb-card tb-hidden">
+                <h2>Register the testbed asset</h2>
+                <label for="tb-asset-id" style="margin-top:0">Asset id</label>
+                <input id="tb-asset-id" placeholder="e.g. kul-experiments-1">
+                <div class="tb-hint">Use the id the platform administrator gave you, if any.</div>
+                <div class="tb-cols">
+                    <div><label for="tb-endpoint">S3 endpoint (as seen from this connector)</label><input id="tb-endpoint" value="http://rustfs:9000"></div>
+                    <div><label for="tb-bucket">Bucket</label><input id="tb-bucket"></div>
+                    <div><label for="tb-access-key">Access key</label><input id="tb-access-key" autocomplete="off"></div>
+                    <div><label for="tb-secret-key">Secret key</label><input id="tb-secret-key" type="password" autocomplete="off"></div>
+                </div>
+                <label for="tb-prefix">Prefix (optional)</label>
+                <input id="tb-prefix" placeholder="leave empty to watch the whole bucket">
+                <div class="tb-actions"><button id="tb-register-btn" class="btn-submit" onclick="tbRegister()">Register asset</button></div>
+            </div>
+
+            <div id="tb-others" class="tb-hint"></div>
+            <div id="tb-others-list" class="tb-card tb-hidden" style="margin-top:0.9rem"></div>
+        </div>
+        <!--/ASSET_ADMIN-->
+
     </div>
 
     <div class="modal-overlay" id="validation-modal-overlay" onclick="if (event.target === this) closeValidationModal()">
@@ -212,6 +283,13 @@
     <script>
         const BASE = window.location.pathname.replace(/\/$/, '');
         let allAssets = [];
+
+        // Only assets of this type can be transferred by the testbed's data plane. Their data is not a file in
+        // the data lake, so the Validation / Preview / Download actions do not apply to them.
+        const TESTBED_TYPE = '6GDaliTestbedExperiments';
+        const assetType = a => (a.dataAddress && a.dataAddress.type) || 'unknown';
+        const isTestbedType = a => assetType(a) === TESTBED_TYPE;
+        const isTestbedChosen = a => isTestbedType(a) && a.metadata && String(a.metadata.testbedAsset) === 'true';
 
         function badgeClass(type) {
             if (type && type.toLowerCase().includes('minio')) return 'badge-minio';
@@ -347,6 +425,7 @@
                 if (depth > 0) html += '<span class="lineage-connector" title="derived from ' + escAttr(parentId || derivedFrom) + '">&#8627;</span>';
                 html += '<strong>' + esc(a.name || a.id) + '</strong>';
                 html += '<span class="asset-badge ' + (isDerived ? 'derived-badge' : 'source') + '">' + (isDerived ? 'derived' : 'source') + '</span>';
+                if (isTestbedChosen(a)) html += '<span class="asset-badge testbed-badge">testbed asset</span>';
                 html += '</span>';
                 if (a.contentType) html += '<span class="muted">' + esc(a.contentType) + '</span>';
                 html += '<span class="mono muted">' + esc(a.id) + '</span>';
@@ -361,9 +440,13 @@
                 if (hasMeta) html += '<span class="muted" style="font-size:0.7rem">&#9660; click to expand metadata</span>';
                 html += '</div></td>';
                 html += '<td><span class="badge ' + badgeClass(type) + '">' + esc(type) + '</span></td>';
+                if (isTestbedType(a)) {
+                    html += '<td></td>';
+                } else {
                 html += '<td><button class="btn-validate" onclick="event.stopPropagation(); viewValidation(\'' + escAttr(a.id) + '\', \'' + escAttr(a.name || a.id) + '\')">Validation</button>';
                 html += '<button class="btn-preview" onclick="event.stopPropagation(); previewAsset(\'' + escAttr(a.id) + '\', \'' + escAttr(a.name || a.id) + '\')">Preview</button>';
                 html += '<button class="btn-download" onclick="event.stopPropagation(); downloadAsset(\'' + escAttr(a.id) + '\')">Download</button></td>';
+                }
                 html += '</tr>';
                 html += '<tr class="meta-row" id="meta-' + i + '" style="display:none"><td colspan="3">' + renderMetadataGrid(a.metadata) + '</td></tr>';
             }
@@ -674,10 +757,160 @@
                 renderAgreements(agreements);
                 renderNegotiations(negotiations);
                 renderTransfers(transfers);
+                tbRender();
 
             } catch (e) {
                 document.getElementById('assets-table').innerHTML = '<div class="error">Failed to load: ' + e.message + '</div>';
             }
+        }
+
+        // ---- testbed asset: choose or register the single asset this testbed offers ----
+        // (the panel only exists when asset administration is enabled on this connector)
+        let tbShowOthers = false;
+        let tbOpened = false;
+
+        const tbEl = id => document.getElementById(id);
+        const tbShow = (id, on) => tbEl(id).classList.toggle('tb-hidden', !on);
+
+        function tbMessage(text, ok) {
+            const m = tbEl('tb-msg');
+            m.textContent = text;
+            m.className = 'tb-message ' + (ok ? 'ok' : 'err');
+        }
+
+        async function tbCall(method, path, body) {
+            const res = await fetch(BASE + path, {
+                method: method,
+                headers: { 'Content-Type': 'application/json', 'X-Api-Key': tbEl('tb-key').value },
+                body: body ? JSON.stringify(body) : undefined
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || res.status + ' ' + res.statusText);
+            return data;
+        }
+
+        function tbButton(label, onClick, danger) {
+            const b = document.createElement('button');
+            b.className = 'btn-download' + (danger ? ' tb-danger' : '');
+            b.textContent = label;
+            b.onclick = onClick;
+            return b;
+        }
+
+        function tbBadge(text) {
+            const s = document.createElement('span');
+            s.className = 'asset-badge testbed-badge';
+            s.textContent = text;
+            return s;
+        }
+
+        function tbRow(a, buttons, badge) {
+            const row = document.createElement('div');
+            row.className = 'tb-asset';
+            const info = document.createElement('div');
+            const title = document.createElement('div');
+            const name = document.createElement('span');
+            name.className = 'mono';
+            name.textContent = a.id;
+            title.append(name);
+            if (badge) title.append(badge);
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            const d = a.dataAddress || {};
+            meta.textContent = [d.bucketName && 'bucket ' + d.bucketName, d.endpoint, d.prefix && 'prefix ' + d.prefix]
+                .filter(Boolean).join(' \u00b7 ');
+            info.append(title, meta);
+            const actions = document.createElement('div');
+            actions.className = 'buttons';
+            actions.append(...buttons);
+            row.append(info, actions);
+            return row;
+        }
+
+        function tbRender() {
+            if (!tbEl('testbed-panel')) return;
+            const eligible = allAssets.filter(isTestbedType);
+            const others = allAssets.filter(a => !isTestbedType(a));
+            const chosen = eligible.find(isTestbedChosen);
+
+            tbEl('testbed-state').textContent = chosen ? '\u2713' : '\u2014';
+            tbShow('tb-current', !!chosen);
+            tbShow('tb-pick', !chosen && eligible.length > 0);
+            tbShow('tb-register', eligible.length === 0);
+
+            tbEl('tb-current-list').replaceChildren();
+            if (chosen) {
+                tbEl('tb-current-list').append(tbRow(chosen, [tbButton('Remove', () => tbRemove(chosen.id), true)], tbBadge('testbed asset')));
+            }
+            tbEl('tb-pick-list').replaceChildren();
+            if (!chosen) {
+                for (const a of eligible) {
+                    tbEl('tb-pick-list').append(tbRow(a, [
+                        tbButton('Use this asset', () => tbChoose(a.id)),
+                        tbButton('Remove', () => tbRemove(a.id), true)
+                    ]));
+                }
+            }
+
+            // Assets of any other type (for example the former 'MinioFiles') cannot be transferred:
+            // counted here rather than hidden silently.
+            tbEl('tb-others').replaceChildren();
+            tbEl('tb-others-list').replaceChildren();
+            tbShow('tb-others-list', tbShowOthers && others.length > 0);
+            if (others.length) {
+                const types = [...new Set(others.map(assetType))].join(', ');
+                const link = document.createElement('a');
+                link.href = '#';
+                link.style.color = 'var(--accent-cyan)';
+                link.textContent = tbShowOthers ? 'hide them' : 'show them';
+                link.onclick = e => { e.preventDefault(); tbShowOthers = !tbShowOthers; tbRender(); };
+                tbEl('tb-others').append(others.length + ' asset(s) of other types (' + types + ') ' +
+                    (tbShowOthers ? 'shown' : 'hidden') + '. They cannot be transferred. ', link);
+                if (tbShowOthers) {
+                    for (const a of others) {
+                        const badge = tbBadge(assetType(a));
+                        badge.style.background = 'rgba(var(--accent-red-rgb), 0.15)';
+                        badge.style.color = 'var(--accent-red)';
+                        tbEl('tb-others-list').append(tbRow(a, [tbButton('Remove', () => tbRemove(a.id), true)], badge));
+                    }
+                }
+            }
+
+            // Open the panel when the page is reached through #testbed-asset (the former register-asset URL redirects here).
+            if (!tbOpened && window.location.hash === '#testbed-asset') {
+                tbOpened = true;
+                showPanel('testbed', tbEl('testbed-card'));
+            }
+        }
+
+        async function tbChoose(id) {
+            try {
+                const r = await tbCall('POST', '/api/admin/testbed-asset', { assetId: id });
+                tbMessage(id + ' is now the testbed asset. Policy: ' + r.policy + ', contract definition: ' + r.contractDefinition + '.', true);
+                load();
+            } catch (e) { tbMessage(e.message, false); }
+        }
+
+        async function tbRemove(id) {
+            if (!confirm('Remove asset ' + id + '?')) return;
+            try {
+                await tbCall('DELETE', '/api/admin/assets/' + encodeURIComponent(id));
+                tbMessage('Removed ' + id + '.', true);
+                load();
+            } catch (e) { tbMessage(e.message, false); }
+        }
+
+        async function tbRegister() {
+            const btn = tbEl('tb-register-btn');
+            btn.disabled = true;
+            try {
+                const r = await tbCall('POST', '/api/admin/assets', {
+                    assetId: tbEl('tb-asset-id').value, endpoint: tbEl('tb-endpoint').value, bucketName: tbEl('tb-bucket').value,
+                    accessKey: tbEl('tb-access-key').value, secretKey: tbEl('tb-secret-key').value, prefix: tbEl('tb-prefix').value
+                });
+                tbMessage('Registered ' + r.assetId + '. Policy: ' + r.policy + ', contract definition: ' + r.contractDefinition + '.', true);
+                load();
+            } catch (e) { tbMessage(e.message, false); } finally { btn.disabled = false; }
         }
 
         load();
