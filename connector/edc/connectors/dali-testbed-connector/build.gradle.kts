@@ -27,8 +27,12 @@ dependencies {
     implementation(libs.edc.configuration.filesystem)
     implementation(libs.edc.iam.mock)
     implementation(libs.edc.management.api)
-    // API-key auth for the management API: set web.http.management.auth.key (or env WEB_HTTP_MANAGEMENT_AUTH_KEY)
+    // API-key auth for the management API: set web.http.management.auth.type=tokenbased and
+    // web.http.management.auth.key (or the env vars WEB_HTTP_MANAGEMENT_AUTH_TYPE / _KEY).
+    // auth-tokenbased only provides the "tokenbased" check; auth-configuration is what reads those settings and
+    // applies it to the management context. Without it the settings are ignored and the API stays open.
     implementation(libs.edc.auth.tokenbased)
+    implementation(libs.edc.auth.configuration)
     implementation(libs.edc.transfer.data.plane.signaling)
     implementation(libs.edc.validator.data.address.http.data)
 
