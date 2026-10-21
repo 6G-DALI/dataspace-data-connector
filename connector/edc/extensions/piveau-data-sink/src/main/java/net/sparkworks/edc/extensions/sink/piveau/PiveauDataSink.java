@@ -65,6 +65,8 @@ public class PiveauDataSink implements DataSink {
     private final String httpDestinationUrl;
     private final String authKey;
     private final String experimentPrefix;
+    /** Where every object is written: the transfer's bucketName, else the connector's experiment prefix. */
+    private final String destinationBucket;
     private final DatasetDirectoryRegistry directories;
 
     public PiveauDataSink(MinioClient minioClient, String bucketName, String prefix,
@@ -82,6 +84,7 @@ public class PiveauDataSink implements DataSink {
         this.httpDestinationUrl = httpDestinationUrl;
         this.authKey = authKey;
         this.experimentPrefix = experimentPrefix;
+        this.destinationBucket = bucketName != null && !bucketName.isEmpty() ? bucketName : experimentPrefix;
         this.directories = directories;
     }
     
@@ -130,8 +133,7 @@ public class PiveauDataSink implements DataSink {
     private void handleJsonFile(DataSource.Part part) {
         String dirName = extractDirName(part.name());
         String fileName = extractFileName(part.name());
-        String experimentId = experimentPrefix + "-" + dirName;
-        String destinationBucket = experimentPrefix == null ? bucketName : experimentPrefix;
+        String experimentId = destinationBucket + "-" + dirName;
         monitor.info("════════════════════════════════════════════════");
         monitor.info("Part Name: " + part.name());
         monitor.info("JSON file detected: " + fileName);
@@ -172,8 +174,7 @@ public class PiveauDataSink implements DataSink {
     private void handleCsvFile(DataSource.Part part) {
         String dirName = extractDirName(part.name());
         String fileName = extractFileName(part.name());
-        String experimentId = experimentPrefix + "-" + dirName;
-        String destinationBucket = experimentPrefix == null ? bucketName : experimentPrefix;
+        String experimentId = destinationBucket + "-" + dirName;
         monitor.info("════════════════════════════════════════════════");
         monitor.info("Registering dataset to Data Lake (s3):");
         monitor.info("Part Name: " + part.name());
@@ -245,8 +246,7 @@ public class PiveauDataSink implements DataSink {
     private void handleCsvFileOld(DataSource.Part part) {
         String dirName = extractDirName(part.name());
         String fileName = extractFileName(part.name());
-        String experimentId = experimentPrefix + "-" + dirName;
-        String destinationBucket = experimentPrefix == null ? bucketName : experimentPrefix;
+        String experimentId = destinationBucket + "-" + dirName;
         monitor.info("════════════════════════════════════════════════");
         monitor.info("Registering dataset to Data Lake (http):");
         monitor.info("Part Name: " + part.name());
