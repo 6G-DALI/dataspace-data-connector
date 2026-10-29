@@ -37,9 +37,9 @@ import java.util.stream.Stream;
 import static java.util.stream.StreamSupport.stream;
 
 /**
- * Data source that monitors a MinIO bucket for new files and routes them based on extension:
- * - .json files: trigger Piveau Hub Repo API call (not transferred)
- * - .csv files: transferred to subscribers
+ * Data source that offers the files of a MinIO bucket to the sink: first every file already in
+ * the bucket, then each new or modified one as it appears. The sink decides what to do with
+ * each (the PiveauData sink uploads it unless the destination already has the same content).
  */
 public class MinioFilesDataSource implements DataSource, Closeable {
     
@@ -128,7 +128,12 @@ public class MinioFilesDataSource implements DataSource, Closeable {
         public String name() {
             return item.objectName();
         }
-        
+
+        @Override
+        public long size() {
+            return item.size();
+        }
+
         @Override
         public InputStream openStream() {
             try {
@@ -159,55 +164,17 @@ public class MinioFilesDataSource implements DataSource, Closeable {
             this.monitor = monitor;
         }
 
-        /**
-         * Initialize by loading all existing objects into seenObjects map
-         * to avoid triggering events for files that already exist.
-         */
-        private void initialize() {
-            if (initialized) {
-                return;
-            }
-
-            try {
-                monitor.info("Initializing MinIO data source - loading existing objects to avoid duplicate events");
-
-                Iterable<Result<Item>> results = minioClient.listObjects(
-                    ListObjectsArgs.builder()
-                        .bucket(bucketName)
-                        .prefix(prefix)
-                        .recursive(true)
-                        .build()
-                );
-
-                int count = 0;
-                for (Result<Item> result : results) {
-                    Item item = result.get();
-                    String objectName = item.objectName();
-
-                    // Skip directory markers
-                    if (objectName.endsWith("/")) {
-                        continue;
-                    }
-
-                    seenObjects.put(objectName, item);
-                    count++;
-                }
-
-                monitor.info("Initialized with " + count + " existing objects - these will not trigger events");
-                initialized = true;
-
-            } catch (Exception e) {
-                monitor.warning("Failed to initialize MinIO data source, will treat all files as new: " + e.getMessage());
-                // Mark as initialized anyway to avoid repeated attempts
-                initialized = true;
-            }
-        }
-        
         @Override
         public boolean tryAdvance(Consumer<? super Item> action) {
             try {
-                // Initialize on first call to load existing objects
-                initialize();
+                if (!initialized) {
+                    // The first listing offers every object already in the bucket, so files stored before
+                    // the transfer started (or while the connector was down) are sent too. The sink skips
+                    // the ones the destination already holds with the same content.
+                    monitor.info("MinIO data source: offering the files already in bucket '" + bucketName
+                            + "' to the sink, which uploads those the destination does not have yet");
+                    initialized = true;
+                }
 
                 // List objects in bucket
                 Iterable<Result<Item>> results = minioClient.listObjects(ListObjectsArgs.builder().bucket(bucketName).prefix(prefix).recursive(true).build());
