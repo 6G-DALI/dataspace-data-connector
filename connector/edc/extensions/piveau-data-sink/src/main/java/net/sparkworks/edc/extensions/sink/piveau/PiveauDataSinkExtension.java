@@ -49,6 +49,10 @@ public class PiveauDataSinkExtension implements ServiceExtension {
     @Setting(value = "Experiment prefix used to build experiment name from directory name", required = false)
     private static final String EXPERIMENT_PREFIX = "edc.experiment.prefix";
 
+    @Setting(value = "Comma-separated file names that are never uploaded (matched on the file's own name, ignoring case)",
+            required = false)
+    private static final String IGNORED_FILENAMES = IgnoredFileNames.SETTING;
+
     @Override
     public String name() {
         return "Piveau Routing Data Sink";
@@ -80,10 +84,18 @@ public class PiveauDataSinkExtension implements ServiceExtension {
 
         String experimentPrefix   = context.getSetting(EXPERIMENT_PREFIX, "");
 
-        pipelineService.registerFactory(new PiveauDataSinkFactory(monitor, executorService, rabbitConnectionFactory, rabbitQueue, experimentPrefix));
+        IgnoredFileNames ignoredFileNames = IgnoredFileNames.parse(context.getSetting(IGNORED_FILENAMES, ""));
+        if (!ignoredFileNames.isEmpty()) {
+            monitor.info("  Ignored file names (" + IGNORED_FILENAMES + "): " + ignoredFileNames);
+        }
+
+        pipelineService.registerFactory(new PiveauDataSinkFactory(
+                monitor, executorService, rabbitConnectionFactory, rabbitQueue, experimentPrefix, ignoredFileNames));
 
         monitor.info("✓ Piveau Routing Data Sink registered");
         monitor.info("  Type: PiveauData");
         monitor.info("  JSON and CSV files → MinIO bucket (configured per transfer)");
+        monitor.info("  Each uploaded file gets a '" + SourceStatusWriter.SUFFIX
+                + "' object next to it in the source bucket, holding its UUID in the data lake");
     }
 }

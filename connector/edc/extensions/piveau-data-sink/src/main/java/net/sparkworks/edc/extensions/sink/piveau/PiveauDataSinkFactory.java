@@ -43,17 +43,19 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
     private final ConnectionFactory rabbitConnectionFactory;
     private final String rabbitQueue;
     private final String experimentPrefix;
+    private final IgnoredFileNames ignoredFileNames;
     // Shared by every sink this factory creates: the source-directory -> UUID mapping.
     private final DatasetDirectoryRegistry directories = new DatasetDirectoryRegistry();
 
     public PiveauDataSinkFactory(Monitor monitor, ExecutorService executorService,
                                  ConnectionFactory rabbitConnectionFactory, String rabbitQueue,
-                                 String experimentPrefix) {
+                                 String experimentPrefix, IgnoredFileNames ignoredFileNames) {
         this.monitor = monitor;
         this.executorService = executorService;
         this.rabbitConnectionFactory = rabbitConnectionFactory;
         this.rabbitQueue = rabbitQueue;
         this.experimentPrefix = experimentPrefix;
+        this.ignoredFileNames = ignoredFileNames != null ? ignoredFileNames : IgnoredFileNames.none();
     }
 
     @Override
@@ -77,6 +79,42 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
             return Result.failure("MinIO secretKey is required in destination data address");
         }
         return Result.success();
+    }
+
+    /**
+     * The writer of the {@code .status} objects, in the bucket the files come from: the transfer's source
+     * address carries that bucket's endpoint and keys (a MinioAsset). {@code null}, so no status objects,
+     * when the source is not an S3 bucket with those properties.
+     */
+    SourceStatusWriter sourceStatusWriter(DataFlowStartMessage request) {
+        var source = request.getSourceDataAddress();
+        if (source == null) {
+            return null;
+        }
+        String endpoint  = source.getStringProperty("endpoint");
+        String bucket    = source.getStringProperty("bucketName");
+        String accessKey = source.getStringProperty("accessKey");
+        String secretKey = source.getStringProperty("secretKey");
+        if (isBlank(endpoint) || isBlank(bucket) || isBlank(accessKey) || isBlank(secretKey)) {
+            monitor.info("  Source status files: off (the source address has no S3 endpoint, bucketName and keys)");
+            return null;
+        }
+        OkHttpClient httpClient = new OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
+        MinioClient client = MinioClient.builder()
+            .endpoint(endpoint)
+            .credentials(accessKey, secretKey)
+            .httpClient(httpClient)
+            .build();
+        monitor.info("  Source status files: '" + SourceStatusWriter.SUFFIX + "' objects in source bucket " + bucket);
+        return new SourceStatusWriter(client, bucket, monitor);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     @Override
@@ -110,7 +148,8 @@ public class PiveauDataSinkFactory implements DataSinkFactory {
             String httpDestinationUrl = dest.getStringProperty("baseUrl");
             String authKey            = dest.getStringProperty("authKey");
 
-            return new PiveauDataSink(minioClient, bucketName, prefix, monitor, executorService, rabbitConnectionFactory, rabbitQueue, httpDestinationUrl, authKey, experimentPrefix, directories);
+            return new PiveauDataSink(minioClient, bucketName, prefix, monitor, executorService, rabbitConnectionFactory, rabbitQueue, httpDestinationUrl, authKey, experimentPrefix, directories,
+                ignoredFileNames, sourceStatusWriter(request));
         } catch (Exception e) {
             monitor.severe("createSink failed for request " + request.getId() + ": " + e.getMessage(), e);
             throw e;

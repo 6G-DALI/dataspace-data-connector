@@ -61,6 +61,11 @@ import java.util.concurrent.ExecutorService;
  *
  * <p>Registering datasets and distributions in the Piveau catalogue is not done here: the
  * s3-asset-monitor watches the data lake and registers them when the files appear.
+ *
+ * <p>Two kinds of file are never uploaded: the names listed in the connector's {@code edc.files.ignore} setting
+ * ({@link IgnoredFileNames}), and the {@code .status} objects ({@link SourceStatusWriter}) that this sink writes into
+ * the source bucket, one per file, when that file is complete in the data lake. A status object holds the UUID
+ * generated for its file.
  */
 public class PiveauDataSink implements DataSink {
     /** The dataset's metadata file, kept under its own name next to the data files. */
@@ -101,12 +106,16 @@ public class PiveauDataSink implements DataSink {
     /** Where every object is written: the transfer's bucketName, else the connector's experiment prefix. */
     private final String destinationBucket;
     private final DatasetDirectoryRegistry directories;
+    private final IgnoredFileNames ignoredFileNames;
+    /** Writes {@code <file>.status} in the source bucket once a file is in the data lake; null: no status objects. */
+    private final SourceStatusWriter sourceStatus;
 
     public PiveauDataSink(MinioClient minioClient, String bucketName, String prefix,
                           Monitor monitor, ExecutorService executorService,
                           ConnectionFactory rabbitConnectionFactory, String rabbitQueue,
                           String httpDestinationUrl, String authKey, String experimentPrefix,
-                          DatasetDirectoryRegistry directories) {
+                          DatasetDirectoryRegistry directories,
+                          IgnoredFileNames ignoredFileNames, SourceStatusWriter sourceStatus) {
         this.minioClient = minioClient;
         this.bucketName = bucketName;
         this.prefix = prefix != null ? prefix : "";
@@ -119,6 +128,8 @@ public class PiveauDataSink implements DataSink {
         this.experimentPrefix = experimentPrefix;
         this.destinationBucket = bucketName != null && !bucketName.isEmpty() ? bucketName : experimentPrefix;
         this.directories = directories;
+        this.ignoredFileNames = ignoredFileNames != null ? ignoredFileNames : IgnoredFileNames.none();
+        this.sourceStatus = sourceStatus;
     }
     
     @Override
@@ -139,6 +150,17 @@ public class PiveauDataSink implements DataSink {
                     String fileName = extractFileName(part.name());
                     monitor.info("Processing file: " + fileName);
                     
+                    // Never uploaded: the status objects this sink writes into the source bucket, and the names the
+                    // connector is configured to ignore (edc.files.ignore).
+                    if (SourceStatusWriter.isStatusFile(fileName)) {
+                        monitor.info("Skipping '" + fileName + "': a status file (" + SourceStatusWriter.SUFFIX + ")");
+                        return;
+                    }
+                    if (ignoredFileNames.ignores(fileName)) {
+                        monitor.info("Skipping '" + fileName + "': listed in " + IgnoredFileNames.SETTING);
+                        return;
+                    }
+
                     try {
                         if (METADATA_FILE_NAME.equalsIgnoreCase(fileName)) {
                             handleJsonFile(part);
@@ -194,6 +216,7 @@ public class PiveauDataSink implements DataSink {
             final String md5 = md5Hex(new ByteArrayInputStream(fileBytes));
             if (md5.equals(storedMd5(objectKey))) {
                 monitor.info("= '" + objectKey + "' is already in bucket '" + destinationBucket + "' with the same content: not uploaded again");
+                markUploaded(part, datasetDirectory);
                 return;
             }
             minioClient.putObject(
@@ -206,6 +229,7 @@ public class PiveauDataSink implements DataSink {
                     .build()
             );
             monitor.info("✓ Uploaded '" + objectKey + "' (" + fileBytes.length + " bytes) to bucket '" + destinationBucket + "'");
+            markUploaded(part, datasetDirectory);
 
         } catch (Exception e) {
             monitor.severe("✗ Failed to upload JSON file to MinIO: " + fileName, e);
@@ -249,6 +273,7 @@ public class PiveauDataSink implements DataSink {
             }
             if (md5.equals(storedMd5(objectKey))) {
                 monitor.info("= '" + fileName + "' is already in bucket '" + destinationBucket + "' as '" + objectKey + "': not uploaded again");
+                markUploaded(part, fileId);
                 return;
             }
 
@@ -268,6 +293,7 @@ public class PiveauDataSink implements DataSink {
 
                 monitor.info("✓ Uploaded '" + fileName + "' as '" + objectKey + "' (etag " + written.etag() + ") to bucket '" + destinationBucket + "'");
 
+                markUploaded(part, fileId);
                 sendRabbitNotification(part.name(), "SUCCESS");
             }
 
@@ -279,6 +305,17 @@ public class PiveauDataSink implements DataSink {
                 monitor.severe("✗ MinIO failed and no HTTP fallback configured for: " + fileName);
                 sendRabbitNotification(part.name(), "FAILED");
             }
+        }
+    }
+
+    /**
+     * The file is complete in the data lake: write {@code <file>.status} next to it in the source bucket, holding the
+     * UUID it is stored under (a data file's own UUID; for metadata.json, its dataset's directory UUID). Also done for
+     * a file the data lake already held, so files uploaded before status objects existed get one. Best effort.
+     */
+    private void markUploaded(DataSource.Part part, String uuid) {
+        if (sourceStatus != null) {
+            sourceStatus.write(part.name(), uuid);
         }
     }
 
