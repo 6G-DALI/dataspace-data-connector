@@ -18,6 +18,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -218,6 +219,19 @@ public class PiveauDataSink implements DataSink {
                 monitor.info("= '" + objectKey + "' is already in bucket '" + destinationBucket + "' with the same content: not uploaded again");
                 markUploaded(part, datasetDirectory);
                 return;
+            }
+            // A different metadata.json replaces the one in the lake only when its revision is higher.
+            byte[] stored = readStored(objectKey);
+            if (stored != null) {
+                long incomingRevision = MetadataRevision.of(fileBytes);
+                long storedRevision = MetadataRevision.of(stored);
+                if (!MetadataRevision.supersedes(incomingRevision, storedRevision)) {
+                    monitor.info("= '" + objectKey + "' changed but its revision (" + incomingRevision + ") is not higher than the one in bucket '"
+                        + destinationBucket + "' (" + storedRevision + "): not sent. Raise \"" + MetadataRevision.FIELD + "\" to send it.");
+                    markUploaded(part, datasetDirectory);
+                    return;
+                }
+                monitor.info("Revision " + storedRevision + " -> " + incomingRevision + " for '" + objectKey + "': sending the new metadata.json");
             }
             minioClient.putObject(
                 PutObjectArgs.builder()
@@ -426,6 +440,19 @@ public class PiveauDataSink implements DataSink {
         }
         String etag = stat.etag() == null ? "" : stat.etag().replace("\"", "").toLowerCase();
         return etag.matches("[0-9a-f]{32}") ? etag : null;
+    }
+
+    /** The content of the object at {@code objectKey} in the destination bucket, or {@code null} when there is none. */
+    private byte[] readStored(String objectKey) throws Exception {
+        try (var in = minioClient.getObject(GetObjectArgs.builder().bucket(destinationBucket).object(objectKey).build())) {
+            return in.readAllBytes();
+        } catch (ErrorResponseException e) {
+            String code = e.errorResponse().code();
+            if ("NoSuchKey".equals(code) || "NoSuchObject".equals(code)) {
+                return null;
+            }
+            throw e;
+        }
     }
 
     private static boolean isDataFile(String fileName) {

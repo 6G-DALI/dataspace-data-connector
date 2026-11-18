@@ -101,8 +101,29 @@ class PiveauDataSinkTest {
         var noSuchKey = mock(ErrorResponseException.class);
         when(noSuchKey.errorResponse()).thenReturn(error);
         when(destination.statObject(any(StatObjectArgs.class))).thenThrow(noSuchKey);
+        when(destination.getObject(any(io.minio.GetObjectArgs.class))).thenThrow(noSuchKey);
         when(destination.bucketExists(any())).thenReturn(true);
         when(destination.putObject(any(PutObjectArgs.class))).thenReturn(mock(ObjectWriteResponse.class));
+    }
+
+    /** The lake already holds a (different) metadata.json with this content. */
+    private void lakeHolds(String storedJson) throws Exception {
+        var stat = mock(io.minio.StatObjectResponse.class);
+        when(stat.userMetadata()).thenReturn(java.util.Map.of());
+        when(stat.etag()).thenReturn("not-an-md5-1");
+        when(destination.statObject(any(StatObjectArgs.class))).thenReturn(stat);
+        when(destination.getObject(any(io.minio.GetObjectArgs.class))).thenReturn(new io.minio.GetObjectResponse(
+                okhttp3.Headers.of(), "lake-bucket", "", DATASET_UUID + "/metadata.json",
+                new ByteArrayInputStream(storedJson.getBytes(StandardCharsets.UTF_8))));
+        when(destination.bucketExists(any())).thenReturn(true);
+        when(destination.putObject(any(PutObjectArgs.class))).thenReturn(mock(ObjectWriteResponse.class));
+    }
+
+    private void transferMetadata(String json) {
+        DataSource source = mock(DataSource.class);
+        when(source.openPartStream()).thenReturn(StreamResult.success(
+                java.util.stream.Stream.<DataSource.Part>of(new Part("exp-1/metadata.json", json.getBytes(StandardCharsets.UTF_8)))));
+        assertThat(sink("", status).transfer(source).join().succeeded()).isTrue();
     }
 
     private List<String> uploadedKeys() throws Exception {
@@ -199,5 +220,61 @@ class PiveauDataSinkTest {
         transfer(sink("", status), "exp-1/data.csv");
 
         verify(status, never()).write(any(), any());
+    }
+
+    @Test
+    void aChangedMetadataWithAHigherRevisionIsSent() throws Exception {
+        lakeHolds("{\"title\":\"Run\",\"revision\":1}");
+
+        transferMetadata("{\"title\":\"Run 2\",\"revision\":2}");
+
+        assertThat(uploadedKeys()).containsExactly(DATASET_UUID + "/metadata.json");
+        verify(status).write("exp-1/metadata.json", DATASET_UUID);
+    }
+
+    @Test
+    void aChangedMetadataWithTheSameRevisionIsNotSentButItsStatusIsWritten() throws Exception {
+        lakeHolds("{\"title\":\"Run\",\"revision\":2}");
+
+        transferMetadata("{\"title\":\"Run edited\",\"revision\":2}");
+
+        assertThat(uploadedKeys()).isEmpty();
+        verify(status).write("exp-1/metadata.json", DATASET_UUID);
+    }
+
+    @Test
+    void aLowerRevisionIsNotSent() throws Exception {
+        lakeHolds("{\"title\":\"Run\",\"revision\":5}");
+
+        transferMetadata("{\"title\":\"Run\",\"revision\":4}");
+
+        assertThat(uploadedKeys()).isEmpty();
+    }
+
+    @Test
+    void aFirstRevisionReplacesAMetadataThatHadNone() throws Exception {
+        lakeHolds("{\"title\":\"Run\"}");
+
+        transferMetadata("{\"title\":\"Run\",\"revision\":1}");
+
+        assertThat(uploadedKeys()).containsExactly(DATASET_UUID + "/metadata.json");
+    }
+
+    @Test
+    void aChangeWithoutAnyRevisionIsNotSent() throws Exception {
+        lakeHolds("{\"title\":\"Run\"}");
+
+        transferMetadata("{\"title\":\"Run edited\"}");
+
+        assertThat(uploadedKeys()).isEmpty();
+    }
+
+    @Test
+    void revisionReadingToleratesTextNegativesAndGarbage() {
+        assertThat(MetadataRevision.of("{\"revision\":\" 7 \"}".getBytes(StandardCharsets.UTF_8))).isEqualTo(7);
+        assertThat(MetadataRevision.of("{\"revision\":-3}".getBytes(StandardCharsets.UTF_8))).isZero();
+        assertThat(MetadataRevision.of("{\"revision\":\"two\"}".getBytes(StandardCharsets.UTF_8))).isZero();
+        assertThat(MetadataRevision.of("{\"revision\":1.5}".getBytes(StandardCharsets.UTF_8))).isZero();
+        assertThat(MetadataRevision.of("not json".getBytes(StandardCharsets.UTF_8))).isZero();
     }
 }

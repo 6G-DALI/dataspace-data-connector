@@ -8,6 +8,10 @@ lake carries the testbed's own directory or file names:
   file seen for a source directory creates the UUID, and the mapping is stored in the bucket as
   `.datasets/<edc.experiment.prefix>-<source dir>` so it survives restarts.
 - `.json` (dataset `metadata.json`) is uploaded as `<dataset-uuid>/<file>`, keeping its name.
+  A `metadata.json` that differs from the one already in the lake replaces it only when its `revision` field is
+  higher. A missing or invalid revision counts as 0. A file that is not sent is logged and still gets its status
+  object. The first `metadata.json` of a dataset is always sent. The s3-asset-monitor then merges the new revision
+  into the catalogue entry.
 - `.csv` is uploaded as `<dataset-uuid>/<file-uuid>.csv` (original extension kept). The file's
   UUID is also remembered, as `.files/<edc.experiment.prefix>-<source dir>/<file name>`, so
   sending the same file again overwrites the same object instead of adding a copy. The
