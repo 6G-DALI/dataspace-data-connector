@@ -493,6 +493,11 @@
         }
 
         function renderTransfers(transfers) {
+            if (!Array.isArray(transfers)) {
+                const msg = transfers && transfers.error ? transfers.error : 'unexpected response';
+                document.getElementById('transfers-table').innerHTML = '<div class="loading">Failed to load transfers: ' + esc(msg) + '</div>';
+                return;
+            }
             if (transfers.length === 0) {
                 document.getElementById('transfers-table').innerHTML = '<div class="loading">No transfers</div>';
                 return;

@@ -339,7 +339,9 @@ public class CatalogUiController {
                 node.put("contractId", tp.getContractId());
                 node.put("transferType", tp.getTransferType());
                 node.put("counterPartyAddress", tp.getCounterPartyAddress());
-                node.put("destinationType", tp.getDestinationType());
+                // dataDestination is null for provider-side/pull transfers
+                var destination = tp.getDataDestination();
+                node.put("destinationType", destination != null ? destination.getType() : null);
                 node.put("stateTimestamp", formatEpochMillis(tp.getStateTimestamp()));
                 arr.add(node);
             }
