@@ -88,6 +88,9 @@ public class PresignedUrlPullFlowController implements DataFlowController {
             var client = MinioClient.builder()
                     .endpoint(endpoint)
                     .credentials(source.getStringProperty("accessKey"), source.getStringProperty("secretKey"))
+                    // With no region the client asks the server for the bucket's region before signing, which
+                    // fails when this connector cannot reach the endpoint. Signing itself is local.
+                    .region(source.getStringProperty("region", "us-east-1"))
                     .build();
 
             var url = client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
