@@ -44,6 +44,8 @@ public class PresignedUrlPullFlowController implements DataFlowController {
 
     public static final String TRANSFER_TYPE = "PresignedUrl-PULL";
 
+    private static final String EDC_NAMESPACE = "https://w3id.org/edc/v0.0.1/ns/";
+
     private static final Set<String> SOURCE_TYPES = Set.of("MinioAsset", "6GDaliTestbedExperiments");
 
     private final AssetIndex assetIndex;
@@ -105,12 +107,12 @@ public class PresignedUrlPullFlowController implements DataFlowController {
 
             var address = DataAddress.Builder.newInstance()
                     .type("HttpData")
-                    // "endpoint" is the property the DSP start message carries to the consumer's EDR;
-                    // "baseUrl" is kept for HttpData-style readers.
-                    .property("endpoint", url)
-                    .property("baseUrl", url)
-                    .property("method", "GET")
-                    .property("expiresInSeconds", String.valueOf(expirySeconds))
+                    // Property keys must be full IRIs in the EDC namespace. A short key such as "endpoint" is
+                    // stored and sent, but the management API (JSON-LD) drops it from the EDR's data address.
+                    .property(EDC_NAMESPACE + "endpoint", url)
+                    .property(EDC_NAMESPACE + "baseUrl", url)
+                    .property(EDC_NAMESPACE + "method", "GET")
+                    .property(EDC_NAMESPACE + "expiresInSeconds", String.valueOf(expirySeconds))
                     .build();
 
             return StatusResult.success(DataFlowResponse.Builder.newInstance().dataAddress(address).build());
